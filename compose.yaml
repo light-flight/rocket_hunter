@@ -1,0 +1,15 @@
+# PostgreSQL for local development and tests: docker compose up -d
+services:
+  postgres:
+    image: postgres:18
+    ports:
+      # Host port 5433 so it does not clash with a Postgres already running on 5432.
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_USER: rocket_hunter
+      POSTGRES_PASSWORD: rocket_hunter
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+volumes:
+  postgres_data:
