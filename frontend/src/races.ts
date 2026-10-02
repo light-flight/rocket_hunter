@@ -1,0 +1,157 @@
+import { useLiveQuery } from 'dexie-react-hooks'
+import { useCallback, useEffect, useState } from 'react'
+import { api } from './api.ts'
+import { db, type Race } from './db.ts'
+
+export type { Race }
+
+// Races are made on the phone and sent to the server when there is a network. The phone
+// picks the id, so sending a race again never makes a second one. The server's list is the
+// team's: races made on other phones arrive here, races removed on the server leave.
+
+// The same rules as the server's (app/models/race.rb), so that a race made here is never refused.
+export const NAME_LIMIT = 100
+
+export function cleanName(name: string): string {
+  return name.replace(/\s+/g, ' ').trim()
+}
+
+// All races on this phone, newest first. undefined until the database has answered.
+export function useRaces(): Race[] | undefined {
+  return useLiveQuery(() => db.races.orderBy('createdAt').reverse().toArray())
+}
+
+// crypto.randomUUID exists only in a secure context, and a phone that opens the app by its
+// LAN address over plain http is not one.
+function newId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+export async function createRace(name: string): Promise<string> {
+  const race: Race = { id: newId(), name: cleanName(name), createdAt: Date.now(), pending: 1 }
+  await db.races.add(race)
+  return race.id
+}
+
+export async function renameRace(id: string, name: string): Promise<void> {
+  await db.races.update(id, { name: cleanName(name), pending: 1 })
+}
+
+type ServerRace = { id: string; name: string; created_at: string }
+
+function isServerRace(value: unknown): value is ServerRace {
+  const race = value as Partial<ServerRace> | null
+  return typeof race?.id === 'string' && typeof race.name === 'string' && typeof race.created_at === 'string'
+}
+
+// Sends what changed on this phone, then takes the team's list.
+async function exchange(onSignedOut: () => void): Promise<void> {
+  for (const race of await db.races.where('pending').equals(1).toArray()) {
+    const response = await api('PUT', `/races/${race.id}`, 10_000, {
+      race: { name: race.name, created_at: new Date(race.createdAt).toISOString() },
+    })
+    // No network: the rest would fail the same way.
+    if (response === null) return
+    if (response.status === 401) return onSignedOut()
+
+    if (response.ok) {
+      await db.transaction('rw', db.races, async () => {
+        // Renamed again while on its way: the new name has yet to go.
+        if ((await db.races.get(race.id))?.name === race.name) await db.races.update(race.id, { pending: 0 })
+      })
+    }
+  }
+
+  const response = await api('GET', '/races')
+  if (response?.status === 401) return onSignedOut()
+  if (response?.status !== 200) return
+
+  const body: { races?: unknown } | null = await response.json().catch(() => null)
+  if (!Array.isArray(body?.races) || !body.races.every(isServerRace)) return
+  const team = body.races
+
+  await db.transaction('rw', db.races, async () => {
+    const here = new Map((await db.races.toArray()).map((race) => [race.id, race]))
+    const there = new Set(team.map((race) => race.id))
+
+    await db.races.bulkPut(
+      team
+        // A change made here and not sent yet wins over what the server has.
+        .filter((race) => here.get(race.id)?.pending !== 1)
+        .map((race) => ({
+          id: race.id,
+          name: race.name,
+          createdAt: Date.parse(race.created_at),
+          pending: 0 as const,
+        })),
+    )
+    // Removed on the server. A race that has never reached it is not among them.
+    await db.races.bulkDelete(
+      [...here.values()].filter((race) => race.pending === 0 && !there.has(race.id)).map((race) => race.id),
+    )
+  })
+}
+
+let running: Promise<void> | null = null
+let again = false
+
+// One exchange at a time. Asked for while one is on its way, it runs once more after it.
+// Never fails: what was not sent stays pending and goes next time.
+function syncRaces(onSignedOut: () => void): Promise<void> {
+  if (running) {
+    again = true
+    return running
+  }
+
+  running = (async () => {
+    try {
+      do {
+        again = false
+        await exchange(onSignedOut)
+      } while (again)
+    } catch {
+      // The database or the network failed halfway: the next exchange starts over.
+    } finally {
+      running = null
+    }
+  })()
+  return running
+}
+
+// Keeps this phone and the server in step: at launch, when the network comes back, when the
+// app returns to the screen, and after every change made here (call sync). synced turns true
+// once the first exchange has finished, whether or not the server answered.
+export function useRaceSync(onSignedOut: () => void) {
+  const [synced, setSynced] = useState(false)
+  const sync = useCallback(() => syncRaces(onSignedOut), [onSignedOut])
+
+  useEffect(() => {
+    let active = true
+    let timer: number | undefined
+    const onVisible = () => {
+      clearTimeout(timer)
+      // Not at once: on iOS a request fired right at this event can hang.
+      if (document.visibilityState === 'visible') timer = window.setTimeout(sync, 500)
+    }
+
+    sync().then(() => {
+      if (active) setSynced(true)
+    })
+    window.addEventListener('online', sync)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      active = false
+      clearTimeout(timer)
+      window.removeEventListener('online', sync)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [sync])
+
+  return { sync, synced }
+}

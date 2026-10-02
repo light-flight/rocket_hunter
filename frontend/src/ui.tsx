@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react'
+import { type ComponentProps, type ReactNode, useEffect, useId, useState } from 'react'
 
 // The building blocks every screen is made of. The rules they follow are in STYLE.md.
 
@@ -6,12 +6,21 @@ type MainActionProps = {
   // Renders a link that looks like the key: only a real link hands over to another app.
   href?: string
   newTab?: boolean
+  // Sends the form it is in: the return key of the keyboard does the same.
+  submit?: boolean
   children: ReactNode
   onClick?: () => void
 } & Pick<ComponentProps<'button'>, 'disabled'>
 
 // The one main action of a screen.
-export function MainAction({ href, newTab = false, children, onClick, disabled }: MainActionProps) {
+export function MainAction({
+  href,
+  newTab = false,
+  submit = false,
+  children,
+  onClick,
+  disabled,
+}: MainActionProps) {
   const className =
     'flex h-15 w-full shrink-0 items-center justify-center gap-2.5 rounded-lg bg-action px-4 text-key ' +
     'font-semibold tracking-key text-on-action uppercase shadow-key active:opacity-70 disabled:opacity-50'
@@ -29,9 +38,121 @@ export function MainAction({ href, newTab = false, children, onClick, disabled }
     )
   }
   return (
-    <button type="button" className={className} onClick={onClick} disabled={disabled}>
+    <button type={submit ? 'submit' : 'button'} className={className} onClick={onClick} disabled={disabled}>
       {children}
     </button>
+  )
+}
+
+// How much of the screen the on-screen keyboard covers: the main action stands above it.
+function useKeyboardInset(): number {
+  const [inset, setInset] = useState(0)
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    // Only while typing: a page zoomed in by a pinch shrinks the visible area too.
+    const update = () => {
+      const typing = document.activeElement?.matches('input, textarea') ?? false
+      const covered = window.innerHeight - viewport.height - viewport.offsetTop
+      setInset(typing ? Math.max(0, Math.round(covered)) : 0)
+    }
+    viewport.addEventListener('resize', update)
+    viewport.addEventListener('scroll', update)
+    document.addEventListener('focusin', update)
+    document.addEventListener('focusout', update)
+    return () => {
+      viewport.removeEventListener('resize', update)
+      viewport.removeEventListener('scroll', update)
+      document.removeEventListener('focusin', update)
+      document.removeEventListener('focusout', update)
+    }
+  }, [])
+
+  return inset
+}
+
+// The bottom of a screen that holds its main action, above the keyboard when there is one.
+export function ActionArea({ children }: { children: ReactNode }) {
+  const keyboard = useKeyboardInset()
+
+  return (
+    <div className="mt-auto flex flex-col gap-3 pt-6" style={{ paddingBottom: keyboard }}>
+      {children}
+    </div>
+  )
+}
+
+type TextFieldProps = { label: string } & Omit<ComponentProps<'input'>, 'id' | 'className'>
+
+// A field with its label above it.
+export function TextField({ label, ...input }: TextFieldProps) {
+  const id = useId()
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label htmlFor={id} className="text-sm text-fg-3">
+        {label}
+      </label>
+      <input
+        id={id}
+        {...input}
+        className="h-14 rounded-lg bg-field px-4 text-name ring-1 ring-line outline-none ring-inset placeholder:text-fg-3 focus:ring-fg-2"
+      />
+    </div>
+  )
+}
+
+type BackLinkProps = { children: ReactNode; onClick: () => void; arrow?: boolean }
+
+// A way back, at the top left of a screen.
+export function BackLink({ children, onClick, arrow = false }: BackLinkProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`-ml-3 flex h-11 items-center self-start pr-3 text-body text-fg-2 active:opacity-70 ${arrow ? 'pl-1.5' : 'pl-3'}`}
+    >
+      {arrow && <ChevronLeft />}
+      {children}
+    </button>
+  )
+}
+
+const ICON = 'shrink-0 fill-none stroke-current [stroke-linecap:round] [stroke-linejoin:round]'
+
+export function Plus() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-5 stroke-[2.4] ${ICON}`}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
+export function ChevronLeft() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-5.5 stroke-2 ${ICON}`}>
+      <path d="M15 6l-6 6 6 6" />
+    </svg>
+  )
+}
+
+export function ChevronRight() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-5 stroke-2 text-fg-3 ${ICON}`}>
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  )
+}
+
+// A cloud with an exclamation mark: made here, not on the server yet.
+export function NotSent() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 stroke-[1.8] ${ICON}`}>
+      <path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 9.5 4.25 4.25 0 0 0 7 18z" />
+      <path d="M12 10.5v3.5M12 16.5v.01" />
+    </svg>
   )
 }
 
