@@ -1,0 +1,2 @@
+# No rows. The file makes fixture loading clear the table, so sessions left behind by the
+# end-to-end tests (bin/rails db:fixtures:load runs before them) do no harm.

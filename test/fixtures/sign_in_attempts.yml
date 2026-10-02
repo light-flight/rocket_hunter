@@ -1,0 +1,11 @@
+pending:
+  token: AttemptPending123456abcd
+  user_agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1
+
+confirmed:
+  user: one
+  token: AttemptConfirmed123abcde
+
+expired:
+  token: AttemptExpired123456abcd
+  created_at: <%= 6.minutes.ago.to_fs(:db) %>

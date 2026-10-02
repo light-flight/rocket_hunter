@@ -89,4 +89,7 @@ Rails.application.configure do
   #
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+
+  # Telegram sends it with every bot update; /telegram/webhook refuses everything while it is not set.
+  config.x.telegram.webhook_secret = Rails.application.credentials.dig(:telegram, :webhook_secret)
 end

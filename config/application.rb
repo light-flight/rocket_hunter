@@ -23,5 +23,9 @@ module RocketHunter
     #
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
+
+    # The bot behind sign-in and invitations. Public: it is part of every t.me link.
+    # Replace with the username chosen at @BotFather
+    config.x.telegram.bot_username = "rocket_hunter_bot"
   end
 end

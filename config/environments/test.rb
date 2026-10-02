@@ -50,4 +50,7 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # Fixed value: the end-to-end tests confirm sign-ins by posting bot updates to /telegram/webhook.
+  config.x.telegram.webhook_secret = "test"
 end

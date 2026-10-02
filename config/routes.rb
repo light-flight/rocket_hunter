@@ -8,5 +8,13 @@ Rails.application.routes.draw do
   # JSON API for the React app (frontend/), which Rails serves as static files from public/.
   namespace :api do
     get "health" => "health#show"
+    resource  :session,         only: %i[ show create destroy ]
+    resource  :sign_in_attempt, only: :create
+    resources :invitations,     only: :create
+  end
+
+  # Bot updates from Telegram: not a browser endpoint, no cookie, no same-origin check.
+  namespace :telegram do
+    resource :webhook, only: :create
   end
 end

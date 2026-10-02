@@ -1,0 +1,8 @@
+one:
+  telegram_id: 1001
+  name: Иван Петров
+  username: ivan_petrov
+
+two:
+  telegram_id: 1002
+  name: Мария Соколова

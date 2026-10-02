@@ -1,0 +1,8 @@
+pending:
+  user: one
+  token: InvitePending1234567abcd
+
+expired:
+  user: one
+  token: InviteExpired1234567abcd
+  created_at: <%= 4.days.ago.to_fs(:db) %>
