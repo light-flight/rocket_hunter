@@ -52,6 +52,11 @@ async function racesOnServer(page: Page): Promise<string[]> {
   return (await response.json()).races.map((race: { name: string }) => race.name)
 }
 
+async function lanesOnServer(page: Page, name: string): Promise<number | undefined> {
+  const response = await page.request.get('/api/races')
+  return (await response.json()).races.find((race: { name: string }) => race.name === name)?.lanes
+}
+
 test('signs in, keeps races without a network and sends them later', async ({ page, context, request }) => {
   await asInstalled(context)
   const signInButton = page.getByRole('link', { name: 'Войти через Telegram' })
@@ -94,8 +99,12 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
   await page.getByRole('button', { name: 'Все гонки' }).click()
   await page.getByRole('button', { name: 'Новая гонка' }).click()
   await field.fill('Этап 2')
+  await expect(page.getByRole('radio', { name: '1 коридор' })).toBeChecked()
+  await page.getByRole('radio', { name: '2 коридора' }).click()
+  await expect(page.getByRole('radio', { name: '2 коридора' })).toBeChecked()
   await field.press('Enter')
   await expect(raceName).toHaveText('Этап 2')
+  await expect(page.getByTestId('race-lanes')).toHaveText('2 коридора')
 
   // It outlives the app being closed, and the app opens in the race chosen last.
   await page.reload()
@@ -107,14 +116,19 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
   await context.setOffline(false)
   await expect(rows.first()).not.toContainText('ждёт сети')
   expect(await racesOnServer(page)).toEqual(['Этап 2', 'Этап 1 · Крылатское'])
+  expect(await lanesOnServer(page, 'Этап 2')).toBe(2)
 
   await rows.first().click()
-  await page.getByRole('button', { name: 'Переименовать' }).click()
+  await page.getByRole('button', { name: 'Изменить' }).click()
   await expect(field).toHaveValue('Этап 2')
+  await expect(page.getByRole('radio', { name: '2 коридора' })).toBeChecked()
   await field.fill('Этап 2 · Сочи')
+  await page.getByRole('radio', { name: '1 коридор' }).click()
   await page.getByRole('button', { name: 'Сохранить' }).click()
   await expect(raceName).toHaveText('Этап 2 · Сочи')
+  await expect(page.getByTestId('race-lanes')).toHaveText('1 коридор')
   await expect.poll(() => racesOnServer(page)).toEqual(['Этап 2 · Сочи', 'Этап 1 · Крылатское'])
+  expect(await lanesOnServer(page, 'Этап 2 · Сочи')).toBe(1)
 
   // A race made on another phone of the team arrives the next time the app opens.
   await page.request.put('/api/races/0b5f6c1e-2a3d-4e5f-8a9b-0c1d2e3f4a5b', {

@@ -11,6 +11,11 @@ export type { Race }
 
 // The same rules as the server's (app/models/race.rb), so that a race made here is never refused.
 export const NAME_LIMIT = 100
+export const LANES = [1, 2, 3] as const
+
+export function lanesLabel(lanes: number): string {
+  return lanes === 1 ? '1 коридор' : `${lanes} коридора`
+}
 
 export function cleanName(name: string): string {
   return name.replace(/[\s\p{Cc}]+/gu, ' ').trim()
@@ -40,28 +45,33 @@ function newId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-export async function createRace(name: string): Promise<string> {
-  const race: Race = { id: newId(), name: cleanName(name), createdAt: Date.now(), pending: 1 }
+export async function createRace(name: string, lanes: number): Promise<string> {
+  const race: Race = { id: newId(), name: cleanName(name), lanes, createdAt: Date.now(), pending: 1 }
   await db.races.add(race)
   return race.id
 }
 
-export async function renameRace(id: string, name: string): Promise<void> {
-  await db.races.update(id, { name: cleanName(name), pending: 1 })
+export async function updateRace(id: string, name: string, lanes: number): Promise<void> {
+  await db.races.update(id, { name: cleanName(name), lanes, pending: 1 })
 }
 
-type ServerRace = { id: string; name: string; created_at: string }
+type ServerRace = { id: string; name: string; lanes: number; created_at: string }
 
 function isServerRace(value: unknown): value is ServerRace {
   const race = value as Partial<ServerRace> | null
-  return typeof race?.id === 'string' && typeof race.name === 'string' && typeof race.created_at === 'string'
+  return (
+    typeof race?.id === 'string' &&
+    typeof race.name === 'string' &&
+    typeof race.lanes === 'number' &&
+    typeof race.created_at === 'string'
+  )
 }
 
 // Sends what changed on this phone, then takes the team's list.
 async function exchange(onSignedOut: () => void): Promise<void> {
   for (const race of await db.races.where('pending').equals(1).toArray()) {
     const response = await api('PUT', `/races/${race.id}`, 10_000, {
-      race: { name: race.name, created_at: new Date(race.createdAt).toISOString() },
+      race: { name: race.name, lanes: race.lanes, created_at: new Date(race.createdAt).toISOString() },
     })
     // No network: the rest would fail the same way.
     if (response === null) return
@@ -69,8 +79,9 @@ async function exchange(onSignedOut: () => void): Promise<void> {
 
     if (response.ok) {
       await db.transaction('rw', db.races, async () => {
-        // Renamed again while on its way: the new name has yet to go.
-        if ((await db.races.get(race.id))?.name === race.name) await db.races.update(race.id, { pending: 0 })
+        // Changed again while on its way: the new version has yet to go.
+        const now = await db.races.get(race.id)
+        if (now?.name === race.name && now.lanes === race.lanes) await db.races.update(race.id, { pending: 0 })
       })
     }
   }
@@ -94,6 +105,7 @@ async function exchange(onSignedOut: () => void): Promise<void> {
         .map((race) => ({
           id: race.id,
           name: race.name,
+          lanes: race.lanes,
           createdAt: Date.parse(race.created_at),
           pending: 0 as const,
         })),

@@ -6,11 +6,13 @@ module Api
       render json: { races: Race.order(created_at: :desc).map { race_json(it) } }
     end
 
-    # Creates the race or renames it.
+    # Creates the race or changes its name and corridors.
     def update
       race = Race.find_or_initialize_by(id: params[:id])
       created = race.new_record?
       race.name = race_params[:name]
+      # A phone still on a version from before corridors sends none: the race keeps its own.
+      race.lanes = race_params[:lanes] if race_params.key?(:lanes)
       # When it was made on the phone, not when the phone got a network again.
       race.created_at = made_at if created
 
@@ -26,7 +28,7 @@ module Api
 
     private
       def race_params
-        params.expect(race: %i[ name created_at ])
+        params.expect(race: %i[ name created_at lanes ])
       end
 
       # A clock that runs fast must not put a race ahead of the ones made later.
@@ -38,7 +40,7 @@ module Api
       end
 
       def race_json(race)
-        { id: race.id, name: race.name, created_at: race.created_at.iso8601(3) }
+        { id: race.id, name: race.name, lanes: race.lanes, created_at: race.created_at.iso8601(3) }
       end
   end
 end
