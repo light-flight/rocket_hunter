@@ -171,7 +171,14 @@ export function SignIn({ onSignedIn, screen = false }: SignInProps) {
           </p>
         )}
         {/* A new tab keeps this page alive behind Telegram. */}
-        <MainAction href={attempt?.telegramUrl} newTab onClick={opened} disabled={!attempt}>
+        {/* In the banner it stands over a screen that has a main action of its own. */}
+        <MainAction
+          href={attempt?.telegramUrl}
+          newTab
+          onClick={opened}
+          disabled={!attempt}
+          secondary={!screen}
+        >
           <TelegramMark />
           Войти через Telegram
         </MainAction>

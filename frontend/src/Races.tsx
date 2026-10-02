@@ -150,7 +150,11 @@ function NameForm({ initial = '', action, autoFocus = false, onSubmit, children 
     <form onSubmit={submit} className="flex flex-1 flex-col">
       {children(field)}
       <ActionArea>
-        {failed && <p className="text-center text-sm text-amber-400">Не удалось сохранить гонку на телефоне.</p>}
+        {failed && (
+          <p role="alert" className="text-center text-sm text-amber-400">
+            Не удалось сохранить гонку на телефоне.
+          </p>
+        )}
         <MainAction submit disabled={!ready}>
           {action}
         </MainAction>
@@ -220,6 +224,11 @@ function made(race: Race): string {
   return (date.getFullYear() === new Date().getFullYear() ? DAY : DAY_OF_YEAR).format(date)
 }
 
+// The first letter of the name: Telegram names often start with an emoji.
+function initial(name: string): string {
+  return (name.match(/\p{L}/u)?.[0] ?? Array.from(name.trim())[0] ?? '').toUpperCase()
+}
+
 type RaceListProps = {
   races: Race[]
   selectedId: string | undefined
@@ -244,7 +253,7 @@ function RaceList({ races, selectedId, onOpen, onNew, user, auth }: RaceListProp
           aria-label={`Менеджер: ${user.name}`}
           className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sheet text-lg font-semibold ring-1 ring-line ring-inset active:opacity-70"
         >
-          {user.name.trim().charAt(0).toUpperCase()}
+          {initial(user.name)}
         </button>
       </div>
 

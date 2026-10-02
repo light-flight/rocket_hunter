@@ -52,7 +52,7 @@ export function Menu({ user, auth, onClose }: MenuProps) {
           Выйти
         </button>
         {signOutFailed && (
-          <p className="text-center text-sm text-amber-400">Нет связи с сервером. Выйти можно, когда появится сеть.</p>
+          <p role="alert" className="text-center text-sm text-amber-400">Нет связи с сервером. Выйти можно, когда появится сеть.</p>
         )}
       </div>
     </dialog>
