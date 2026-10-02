@@ -16,9 +16,16 @@ export function cleanName(name: string): string {
   return name.replace(/[\s\p{Cc}]+/gu, ' ').trim()
 }
 
-// All races on this phone, newest first. undefined until the database has answered.
-export function useRaces(): Race[] | undefined {
-  return useLiveQuery(() => db.races.orderBy('createdAt').reverse().toArray())
+// All races on this phone, newest first. undefined until the database has answered, null if
+// it cannot be read.
+export function useRaces(): Race[] | null | undefined {
+  return useLiveQuery(() =>
+    db.races
+      .orderBy('createdAt')
+      .reverse()
+      .toArray()
+      .catch(() => null),
+  )
 }
 
 // crypto.randomUUID exists only in a secure context, and a phone that opens the app by its

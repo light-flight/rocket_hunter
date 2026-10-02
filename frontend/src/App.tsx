@@ -6,6 +6,7 @@ import { situation } from './install.ts'
 import { Races } from './Races.tsx'
 import { SignIn } from './SignIn.tsx'
 import { persistStorage } from './status.ts'
+import { Trouble } from './Trouble.tsx'
 
 function App() {
   const auth = useAuth()
@@ -64,7 +65,9 @@ function App() {
               <SignIn onSignedIn={auth.signedIn} />
             </section>
           )}
-          <Races user={auth.user} auth={auth} />
+          <Trouble>
+            <Races user={auth.user} auth={auth} />
+          </Trouble>
         </>
       ) : before.step === 'none' ? (
         <SignIn onSignedIn={auth.signedIn} screen />
