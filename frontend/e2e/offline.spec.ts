@@ -165,6 +165,20 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
   await expect(rows).toHaveCount(0)
 })
 
+test('a database that cannot be opened leaves a way out, not a blank screen', async ({ page, context }) => {
+  await asInstalled(context)
+  await context.addInitScript(() => {
+    localStorage.setItem('rocket-hunter.user', JSON.stringify({ name: 'Иван Петров' }))
+    IDBFactory.prototype.open = () => {
+      throw new DOMException('Internal error opening backing store', 'UnknownError')
+    }
+  })
+  await page.goto('/')
+
+  await expect(page.getByRole('heading', { name: 'Не удалось прочитать данные на телефоне' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Перезапустить' })).toBeVisible()
+})
+
 test('server paths are answered by Rails, not by the cached app shell', async ({ page }) => {
   await page.goto('/')
   // The service worker is active, so the whole app shell is in the cache.

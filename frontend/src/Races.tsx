@@ -3,6 +3,7 @@ import type { Auth, User } from './auth.ts'
 import { Masthead, Palm } from './glove.tsx'
 import { Menu } from './Menu.tsx'
 import { cleanName, createRace, NAME_LIMIT, type Race, renameRace, useRaces, useRaceSync } from './races.ts'
+import { StorageTrouble } from './Trouble.tsx'
 import { ActionArea, BackLink, ChevronRight, MainAction, NotSent, Plus, TextField } from './ui.tsx'
 
 // The app after signing in. All work is done inside one race; the app opens in the race
@@ -58,6 +59,7 @@ export function Races({ user, auth }: RacesProps) {
   }
 
   if (races === undefined) return null
+  if (races === null) return <StorageTrouble />
 
   // A phone with no races yet asks the server first: the team may have some already.
   if (races.length === 0) return <FirstRace waiting={!synced} onCreate={create} />
