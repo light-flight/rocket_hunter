@@ -20,6 +20,8 @@ export default defineConfig({
       manifest: {
         // The app's identity on the phone. Changing id, scope or start_url after
         // managers have installed it means reinstalling and losing local data.
+        // iPhone also takes the name and icon at install time and never refreshes them,
+        // so the final icon must ship before managers install the app for real work.
         id: '/',
         scope: '/',
         start_url: '/',
@@ -47,8 +49,8 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      // Same origin for the browser in development, as in production. Keep changeOrigin off:
-      // Rails compares the Origin header with the request host.
+      // Same origin for the browser in development, as in production. Keep changeOrigin off
+      // so Rails sees the same Host as the browser's Origin.
       '/api': 'http://127.0.0.1:3000',
     },
   },

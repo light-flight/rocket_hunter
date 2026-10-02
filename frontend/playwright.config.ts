@@ -9,8 +9,11 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Pixel 7'] } }],
   webServer: {
-    command: 'npm run build:rails && cd .. && bin/rails server -e test -p 3100 --pid tmp/pids/e2e.pid',
+    command:
+      'npm run build:rails && cd .. && bin/rails server -e test -b localhost -p 3100 --pid tmp/pids/e2e.pid',
     url: 'http://localhost:3100/up',
     reuseExistingServer: false,
+    // Lets Puma exit cleanly and remove its pid file instead of being killed.
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 5000 },
   },
 })

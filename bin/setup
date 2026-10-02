@@ -15,6 +15,7 @@ FileUtils.chdir APP_ROOT do
   puts "== Installing dependencies =="
   system("bundle check") || system!("bundle install")
   system! "npm --prefix frontend install"
+  system! "npm --prefix frontend exec -- playwright install chromium"
 
   puts "\n== Starting PostgreSQL (compose.yaml) =="
   system! "docker compose up -d --wait"

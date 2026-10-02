@@ -1,21 +1,26 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export type ServerStatus = 'checking' | 'reachable' | 'unreachable'
 
 // navigator.onLine is only a hint, so reachability is decided by a real request.
 export function useServerStatus(): [ServerStatus, () => void] {
   const [status, setStatus] = useState<ServerStatus>('checking')
+  const latestCheck = useRef(0)
 
   const check = useCallback(async () => {
+    // Checks can overlap; only the most recent one may set the status.
+    const id = ++latestCheck.current
+    let reachable = false
     try {
       const response = await fetch('/api/health', {
         cache: 'no-store',
         signal: AbortSignal.timeout(5000),
       })
-      setStatus(response.ok ? 'reachable' : 'unreachable')
+      reachable = response.ok
     } catch {
-      setStatus('unreachable')
+      // No network or no answer in time.
     }
+    if (id === latestCheck.current) setStatus(reachable ? 'reachable' : 'unreachable')
   }, [])
 
   useEffect(() => {

@@ -10,6 +10,13 @@ services:
       POSTGRES_PASSWORD: rocket_hunter
     volumes:
       - postgres_data:/var/lib/postgresql
+    # Lets "docker compose up --wait" (bin/setup) return only when the server accepts
+    # TCP connections; on a fresh volume the container is "running" well before that.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "rocket_hunter"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
 
 volumes:
   postgres_data:

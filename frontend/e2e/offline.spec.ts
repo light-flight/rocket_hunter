@@ -7,6 +7,10 @@ test('opens and keeps local records without a network', async ({ page, context }
   // The service worker is active, so the whole app shell is in the cache.
   await expect(page.getByTestId('offline-ready')).toHaveText('готово')
 
+  // Anything the page needs but the service worker did not cache fails while offline.
+  const failedRequests: string[] = []
+  page.on('requestfailed', (request) => failedRequests.push(new URL(request.url()).pathname))
+
   await context.setOffline(true)
   await page.reload()
 
@@ -19,8 +23,21 @@ test('opens and keeps local records without a network', async ({ page, context }
 
   await page.reload()
   await expect(page.getByTestId('storage-count')).toHaveText('2')
+  expect(failedRequests.filter((path) => path !== '/api/health')).toEqual([])
 
   await context.setOffline(false)
   await page.getByRole('button', { name: 'Проверить связь' }).click()
   await expect(page.getByTestId('server-status')).toHaveText('есть')
+})
+
+test('server paths are answered by Rails, not by the cached app shell', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByTestId('offline-ready')).toHaveText('готово')
+  // Reload so the page is controlled by the service worker.
+  await page.reload()
+
+  const response = await page.goto('/up')
+
+  expect(response?.fromServiceWorker()).toBe(false)
+  await expect(page.locator('#root')).toHaveCount(0)
 })

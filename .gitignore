@@ -31,7 +31,9 @@
 /public/assets
 
 # public/ also receives the built React app (frontend/: npm run build:rails).
-# Only Rails' own static files are tracked.
+# Only Rails' own static files are tracked. New static files belong in frontend/public/:
+# a file added here by hand is ignored by git and deleted by the next build unless it
+# is added to the list below.
 /public/*
 !/public/400.html
 !/public/404.html

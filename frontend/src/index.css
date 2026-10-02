@@ -1,13 +1,9 @@
 @import "tailwindcss";
 
 /* Placeholder look for the skeleton; the real design tokens come with the design stage. */
-html {
-  background: #0b0f14;
-  color: #ffffff;
-  -webkit-text-size-adjust: 100%;
-}
-
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+@layer base {
+  html {
+    background: #0b0f14;
+    color: #ffffff;
+  }
 }

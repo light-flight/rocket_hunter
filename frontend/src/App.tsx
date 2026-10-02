@@ -36,6 +36,14 @@ function App() {
     },
   })
 
+  // A page opened before any service worker existed (every first launch) is not controlled
+  // by one. The new worker is already active there, so a reload is all it takes; the
+  // plugin's own path would do nothing.
+  function applyUpdate() {
+    if (navigator.serviceWorker.controller) updateServiceWorker()
+    else window.location.reload()
+  }
+
   const serverText = { checking: 'проверяю…', reachable: 'есть', unreachable: 'нет' }[server]
 
   return (
@@ -45,7 +53,7 @@ function App() {
       {needRefresh && (
         <button
           type="button"
-          onClick={() => updateServiceWorker(true)}
+          onClick={applyUpdate}
           className="rounded-xl bg-emerald-500 px-4 py-3 font-semibold text-black active:opacity-70"
         >
           Доступно обновление — установить
