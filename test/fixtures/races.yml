@@ -1,0 +1,2 @@
+# No races: the end-to-end test starts with a team that has none, and loading the fixtures
+# empties the table. Tests that need a race make their own.

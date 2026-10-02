@@ -8,7 +8,10 @@ async function confirmInTelegram(page: Page, request: APIRequestContext) {
   const href = await link.getAttribute('href')
   // Telegram itself stays out of the test.
   await page.context().route('https://t.me/**', (route) => route.fulfill({ body: '' }))
+  const telegram = page.waitForEvent('popup')
   await link.click()
+  // The manager comes back to the app: it is the page in front again, as on the phone.
+  await (await telegram).close()
   expect(href).toMatch(/^https:\/\/t\.me\/\w+\?start=\w+$/)
   const token = new URL(href!).searchParams.get('start')
   const headers = { 'X-Telegram-Bot-Api-Secret-Token': 'test' }
@@ -43,21 +46,36 @@ async function asInstalled(context: BrowserContext) {
   await context.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }))
 }
 
-test('signs in, then opens and stays usable without a network', async ({ page, context, request }) => {
+// What the server holds: the team's list of races, as the next phone to sign in gets it.
+async function racesOnServer(page: Page): Promise<string[]> {
+  const response = await page.request.get('/api/races')
+  return (await response.json()).races.map((race: { name: string }) => race.name)
+}
+
+test('signs in, keeps races without a network and sends them later', async ({ page, context, request }) => {
   await asInstalled(context)
   const signInButton = page.getByRole('link', { name: 'Войти через Telegram' })
-  const currentUser = page.getByTestId('current-user')
   const sessionExpired = page.getByTestId('session-expired')
+  const raceName = page.getByRole('heading', { level: 1 })
+  const field = page.getByLabel('Название гонки')
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Rocket Hunter' })).toBeVisible()
   await confirmInTelegram(page, request)
 
   // Nothing is clicked here: the app notices the confirmation by itself, within one poll.
-  await expect(currentUser).toHaveText('Иван Петров', { timeout: 10_000 })
-  await expect(page.getByTestId('server-status')).toHaveText('есть')
+  // The team has no races yet, so the app asks for the first one.
+  const firstRace = page.getByRole('heading', { name: 'Первая гонка' })
+  await expect(firstRace).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('button', { name: 'Создать гонку' })).toBeDisabled()
+  await field.fill('  Этап 1 ·  Крылатское ')
+  await page.getByRole('button', { name: 'Создать гонку' }).click()
+
+  await expect(raceName).toHaveText('Этап 1 · Крылатское')
+  await expect.poll(() => racesOnServer(page)).toEqual(['Этап 1 · Крылатское'])
+
   // The service worker is active, so the whole app shell is in the cache.
-  await expect(page.getByTestId('offline-ready')).toHaveText('готово')
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => null))
 
   // Anything the page needs but the service worker did not cache fails while offline.
   const failedRequests: string[] = []
@@ -66,31 +84,67 @@ test('signs in, then opens and stays usable without a network', async ({ page, c
   await context.setOffline(true)
   await page.reload()
 
-  // No answer from the server says nothing about the session: the manager stays signed in.
-  await expect(currentUser).toBeVisible()
-  await expect(page.getByTestId('server-status')).toHaveText('нет')
+  // No answer from the server says nothing about the session: the manager stays in the race.
+  await expect(raceName).toHaveText('Этап 1 · Крылатское')
   await expect(signInButton).toHaveCount(0)
   await expect(sessionExpired).toHaveCount(0)
   expect(failedRequests.filter((path) => !path.startsWith('/api/'))).toEqual([])
 
+  // A race made without a network is there at once and waits for one.
+  await page.getByRole('button', { name: 'Все гонки' }).click()
+  await page.getByRole('button', { name: 'Новая гонка' }).click()
+  await field.fill('Этап 2')
+  await field.press('Enter')
+  await expect(raceName).toHaveText('Этап 2')
+
+  // It outlives the app being closed, and the app opens in the race chosen last.
+  await page.reload()
+  await expect(raceName).toHaveText('Этап 2')
+  await page.getByRole('button', { name: 'Все гонки' }).click()
+  const rows = page.getByRole('listitem')
+  await expect(rows).toHaveText([/^Этап 2.*открыта сейчас.*ждёт сети/, /^Этап 1 · Крылатское/])
+
   await context.setOffline(false)
-  await page.getByRole('button', { name: 'Проверить связь' }).click()
-  await expect(page.getByTestId('server-status')).toHaveText('есть')
+  await expect(rows.first()).not.toContainText('ждёт сети')
+  expect(await racesOnServer(page)).toEqual(['Этап 2', 'Этап 1 · Крылатское'])
+
+  await rows.first().click()
+  await page.getByRole('button', { name: 'Переименовать' }).click()
+  await expect(field).toHaveValue('Этап 2')
+  await field.fill('Этап 2 · Сочи')
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await expect(raceName).toHaveText('Этап 2 · Сочи')
+  await expect.poll(() => racesOnServer(page)).toEqual(['Этап 2 · Сочи', 'Этап 1 · Крылатское'])
+
+  // A race made on another phone of the team arrives the next time the app opens.
+  await page.request.put('/api/races/0b5f6c1e-2a3d-4e5f-8a9b-0c1d2e3f4a5b', {
+    data: { race: { name: 'Этап 3 · с другого телефона' } },
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Все гонки' }).click()
+  await expect(rows.first()).toContainText('Этап 3 · с другого телефона')
+
+  await page.getByRole('button', { name: 'Менеджер: Иван Петров' }).click()
+  await expect(page.getByTestId('current-user')).toHaveText('Иван Петров')
+  await expect(page.getByTestId('offline-ready')).toHaveText('готово')
+  await page.keyboard.press('Escape')
 
   // A lost session asks to sign in again, but leaves the app on screen.
   await context.clearCookies()
   await page.reload()
   await expect(sessionExpired).toBeVisible()
-  await expect(currentUser).toBeVisible()
+  await expect(raceName).toHaveText('Этап 2 · Сочи')
 
   await confirmInTelegram(page, request)
   await expect(sessionExpired).toHaveCount(0, { timeout: 10_000 })
-  await expect(currentUser).toBeVisible()
+  await expect(raceName).toHaveText('Этап 2 · Сочи')
 
+  await page.getByRole('button', { name: 'Все гонки' }).click()
+  await page.getByRole('button', { name: 'Менеджер: Иван Петров' }).click()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Выйти' }).click()
   await expect(signInButton).toBeVisible()
-  await expect(currentUser).toHaveCount(0)
+  await expect(rows).toHaveCount(0)
 
   // The gate is drawn from local storage before the server answers, so wait for the session
   // check: a session that outlived the sign-out would bring the manager back.
@@ -101,7 +155,7 @@ test('signs in, then opens and stays usable without a network', async ({ page, c
   await page.reload()
   expect((await sessionCheck).status()).toBe(401)
   await expect(signInButton).toBeVisible()
-  await expect(currentUser).toHaveCount(0)
+  await expect(rows).toHaveCount(0)
 })
 
 test('server paths are answered by Rails, not by the cached app shell', async ({ page }) => {

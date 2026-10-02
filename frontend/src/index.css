@@ -12,6 +12,12 @@
   --color-fg-2: #c2c2ca;
   /* Small print only: too dim for anything a person must read to get on. */
   --color-fg-3: #9494a0;
+  /* A field to type in, a shade above the ground. */
+  --color-field: #0c0c0e;
+  /* A sheet raised over the screen. */
+  --color-sheet: #121214;
+  /* The fill of a control that is not the main action, and the hairline between rows of a list. */
+  --color-control: #1c1c20;
   /* A cap is a control of the browser, drawn in the steps as the key to press. */
   --color-cap: #222226;
   --color-cap-edge: #3a3a42;
@@ -27,6 +33,12 @@
 
   --text-body: 1.0625rem;
   --text-body--line-height: 1.5rem;
+  /* The heading of a screen inside the app. */
+  --text-title: 2.125rem;
+  --text-title--line-height: 2.5rem;
+  /* A name in a list or a field: a race. */
+  --text-name: 1.1875rem;
+  --text-name--line-height: 1.5rem;
   --text-key: 1.1875rem;
   --text-key--line-height: 1.5rem;
   --text-wordmark: 1.875rem;

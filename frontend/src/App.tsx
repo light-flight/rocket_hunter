@@ -1,14 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useAuth } from './auth.ts'
-import { Home } from './Home.tsx'
 import { Install } from './Install.tsx'
 import { situation } from './install.ts'
+import { Races } from './Races.tsx'
 import { SignIn } from './SignIn.tsx'
+import { persistStorage } from './status.ts'
 
 function App() {
   const auth = useAuth()
   const [before] = useState(situation)
+  const signedIn = auth.user !== null
+
+  // The races entered on this phone must outlive any clean-up of the browser's storage.
+  useEffect(() => {
+    if (signedIn) persistStorage()
+  }, [signedIn])
 
   const {
     needRefresh: [needRefresh],
@@ -57,8 +64,7 @@ function App() {
               <SignIn onSignedIn={auth.signedIn} />
             </section>
           )}
-          <Home user={auth.user} auth={auth} />
-          <p className="mt-auto text-center text-xs text-white/40">Сборка {__BUILD_ID__}</p>
+          <Races user={auth.user} auth={auth} />
         </>
       ) : before.step === 'none' ? (
         <SignIn onSignedIn={auth.signedIn} screen />

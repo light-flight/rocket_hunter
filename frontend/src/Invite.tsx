@@ -7,6 +7,8 @@ const INVITATION =
 
 type InviteProps = { onSessionExpired: () => void }
 
+const BUTTON = 'h-14 rounded-lg bg-control text-body font-semibold ring-1 ring-line ring-inset active:opacity-70 disabled:opacity-50'
+
 // Two taps, because sharing and copying only work straight from a tap, not after a request.
 export function Invite({ onSessionExpired }: InviteProps) {
   const [text, setText] = useState<string | null>(null)
@@ -45,32 +47,25 @@ export function Invite({ onSessionExpired }: InviteProps) {
 
   if (text === null) {
     return (
-      <section className="flex flex-col gap-3 rounded-2xl bg-white/5 p-4">
+      <div className="flex flex-col gap-2">
         {failed && (
-          <p className="text-amber-400">Не удалось создать приглашение. Попробуйте ещё раз.</p>
+          <p className="text-center text-sm text-amber-400">Не удалось создать приглашение. Попробуйте ещё раз.</p>
         )}
-        <button
-          type="button"
-          onClick={create}
-          disabled={creating}
-          className="rounded-xl bg-white/10 px-4 py-3 active:opacity-70 disabled:opacity-50"
-        >
+        <button type="button" onClick={create} disabled={creating} className={BUTTON}>
           Пригласить менеджера
         </button>
-      </section>
+      </div>
     )
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-2xl bg-white/5 p-4">
-      <p className="break-words whitespace-pre-line">{text}</p>
-      <button
-        type="button"
-        onClick={() => (canShare ? share(text) : copy(text))}
-        className="rounded-xl bg-white px-4 py-3 font-semibold text-black active:opacity-70"
-      >
-        {canShare ? 'Поделиться' : copied ? 'Скопировано' : 'Скопировать'}
+    <div className="flex flex-col gap-3">
+      <p className="rounded-lg bg-field p-3 text-sm break-words whitespace-pre-line text-fg-2 ring-1 ring-line ring-inset">
+        {text}
+      </p>
+      <button type="button" onClick={() => (canShare ? share(text) : copy(text))} className={BUTTON}>
+        {canShare ? 'Поделиться приглашением' : copied ? 'Скопировано' : 'Скопировать приглашение'}
       </button>
-    </section>
+    </div>
   )
 }
