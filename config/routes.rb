@@ -11,8 +11,13 @@ Rails.application.routes.draw do
     resource  :session,         only: %i[ show create destroy ]
     resource  :sign_in_attempt, only: :create
     resources :invitations,     only: :create
-    # The id is made on the phone; anything that is not a UUID is not a race.
-    resources :races,           only: %i[ index update ], constraints: { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
+    # Ids are made on the phone; anything that is not a UUID is not a race, nor a file.
+    uuid = /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/
+    resources :races, only: %i[ index update ], constraints: { id: uuid } do
+      resources :qualification_files, only: %i[ index update destroy ], constraints: { race_id: uuid, id: uuid } do
+        post :read, on: :member
+      end
+    end
   end
 
   # Bot updates from Telegram: not a browser endpoint, no cookie, no same-origin check.

@@ -53,4 +53,8 @@ Rails.application.configure do
 
   # Fixed value: the end-to-end tests confirm sign-ins by posting bot updates to /telegram/webhook.
   config.x.telegram.webhook_secret = "test"
+
+  # Qualification protocols are read without calling the model, whatever key the machine has.
+  config.x.qualification.reader = "QualificationReader::Canned"
+  config.x.qualification.api_key = nil
 end

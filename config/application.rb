@@ -26,5 +26,10 @@ module RocketHunter
 
     # The bot behind sign-in and invitations. Public: it is part of every t.me link.
     config.x.telegram.bot_username = "rocket_hunter_auth_bot"
+
+    # The model that reads qualification protocols, and its API key: in the credentials
+    # (anthropic.api_key) or in ANTHROPIC_API_KEY.
+    config.x.qualification.model = ENV.fetch("QUALIFICATION_MODEL", "claude-opus-5-5")
+    config.x.qualification.api_key = credentials.dig(:anthropic, :api_key).presence || ENV["ANTHROPIC_API_KEY"].presence
   end
 end
