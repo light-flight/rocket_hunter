@@ -55,12 +55,6 @@ async function attemptFrom(response: Response): Promise<Attempt | null> {
   return { telegramUrl: body.telegram_url, expiresAt: Date.now() + body.expires_in * 1000 }
 }
 
-// The same bot link in the form that goes straight to the Telegram app, without t.me.
-function appLink(telegramUrl: string): string {
-  const url = new URL(telegramUrl)
-  return `tg://resolve?domain=${url.pathname.slice(1)}&start=${url.searchParams.get('start')}`
-}
-
 type SignInProps = { onSignedIn: (user: User) => void; installHint?: boolean }
 
 // Used by the sign-in screen and by the "sign in again" banner.
@@ -70,10 +64,8 @@ export function SignIn({ onSignedIn, installHint = false }: SignInProps) {
   const [starting, setStarting] = useState(false)
   const [notice, setNotice] = useState<string | null>(stored.expired ? EXPIRED : null)
   const [unreachable, setUnreachable] = useState(false)
-  const [copied, setCopied] = useState(false)
   // The attempt found in storage at launch: the only one that is polled right away.
   const resumed = useRef(attempt)
-  const pollNow = useRef(() => {})
 
   // Asks the server whether the attempt was confirmed in the bot: one request at a time,
   // and only while the app is on screen.
@@ -96,7 +88,6 @@ export function SignIn({ onSignedIn, installHint = false }: SignInProps) {
     }
 
     const poll = async () => {
-      clearTimeout(timer)
       // The request on its way schedules the next one when it settles.
       if (busy) return
       // Checked before asking, so the attempt runs out without a network too.
@@ -126,7 +117,6 @@ export function SignIn({ onSignedIn, installHint = false }: SignInProps) {
     }
     const onOnline = () => schedule(0)
 
-    pollNow.current = poll
     schedule(attempt === resumed.current ? 0 : 3000)
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('online', onOnline)
@@ -149,7 +139,6 @@ export function SignIn({ onSignedIn, installHint = false }: SignInProps) {
       storeAttempt(started)
       setAttempt(started)
       setUnreachable(false)
-      setCopied(false)
     } else if (response === null) {
       setNotice('Нет связи с сервером. Попробуйте ещё раз.')
     } else {
@@ -161,15 +150,6 @@ export function SignIn({ onSignedIn, installHint = false }: SignInProps) {
     storeAttempt(null)
     setAttempt(null)
     setNotice(null)
-  }
-
-  function copyLink(telegramUrl: string) {
-    // Called straight from the tap: browsers refuse clipboard access outside a user gesture.
-    // navigator.clipboard is missing outside a secure context (plain http on a LAN address).
-    navigator.clipboard?.writeText(telegramUrl).then(
-      () => setCopied(true),
-      () => {},
-    )
   }
 
   if (!attempt) {
@@ -202,41 +182,16 @@ export function SignIn({ onSignedIn, installHint = false }: SignInProps) {
       >
         Открыть Telegram
       </a>
-      <p className="text-white/60">Telegram не открылся?</p>
-      <div className="flex gap-3">
-        <a
-          href={appLink(attempt.telegramUrl)}
-          className="flex flex-1 items-center justify-center rounded-xl bg-white/10 px-4 py-3 text-center active:opacity-70"
-        >
-          Открыть иначе
-        </a>
-        <button
-          type="button"
-          onClick={() => copyLink(attempt.telegramUrl)}
-          className="flex-1 rounded-xl bg-white/10 px-4 py-3 active:opacity-70"
-        >
-          {copied ? 'Скопировано' : 'Скопировать ссылку'}
-        </button>
-      </div>
       <p role="status" className={unreachable ? 'text-amber-400' : 'text-white/60'}>
         {unreachable ? 'Нет связи с сервером, пробуем снова…' : 'Ждём подтверждения в Telegram…'}
       </p>
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={() => pollNow.current()}
-          className="flex-1 rounded-xl bg-white/10 px-4 py-3 active:opacity-70"
-        >
-          Проверить
-        </button>
-        <button
-          type="button"
-          onClick={cancel}
-          className="flex-1 rounded-xl bg-white/10 px-4 py-3 active:opacity-70"
-        >
-          Отмена
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={cancel}
+        className="rounded-xl bg-white/10 px-4 py-3 active:opacity-70"
+      >
+        Отмена
+      </button>
     </div>
   )
 }
