@@ -1,0 +1,73 @@
+name: Deploy
+
+# By hand only, never on a push or a merge: Actions → Deploy → Run workflow, in the GitHub app on
+# a phone too. The same bin/kamal deploy as from a computer, of the main branch, after the same
+# checks as every pull request. The keys it needs are listed in README, «Выкладка с телефона».
+on:
+  workflow_dispatch:
+
+# One deploy at a time: a second one waits for the first instead of cutting it off halfway.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  main-only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse any branch but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Выкладывается только main, а выбрана ветка $GITHUB_REF_NAME."
+          exit 1
+
+  checks:
+    needs: main-only
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          # The id of the build is the last commit that touched frontend/ (config/deploy.yml).
+          fetch-depth: 0
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Hand over the keys
+        env:
+          RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+          DATABASE_KEY: ${{ secrets.DATABASE_KEY }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          for name in RAILS_MASTER_KEY DATABASE_KEY DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Нет секрета $name: README, «Выкладка с телефона»."
+              exit 1
+            fi
+          done
+
+          # .kamal/secrets reads these two files, as on a computer.
+          printf '%s' "$RAILS_MASTER_KEY" > config/master.key
+          printf '%s' "$DATABASE_KEY" > config/database.key
+
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # The server's own key: anyone else answering at its address is refused.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: bin/kamal deploy
