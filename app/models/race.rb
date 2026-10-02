@@ -3,7 +3,8 @@
 class Race < ApplicationRecord
   NAME_LIMIT = 100
 
-  normalizes :name, with: ->(name) { name.squish }
+  # Control characters too: PostgreSQL refuses a NUL in a string.
+  normalizes :name, with: ->(name) { name.gsub(/[[:cntrl:]]/, " ").squish }
 
   validates :name, presence: true, length: { maximum: NAME_LIMIT }
 end
