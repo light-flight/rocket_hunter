@@ -14,9 +14,6 @@ CI.run do
   # Type-checks and builds the React app, then runs it offline in Chromium against Rails.
   step "Tests: Frontend end-to-end", "npm --prefix frontend run e2e"
 
-  # Optional: Run system tests
-  # step "Tests: System", "bin/rails test:system"
-
   # Optional: set a green GitHub commit status to unblock PR merge.
   # Requires the `gh` CLI and `gh extension install basecamp/gh-signoff`.
   # if success?
