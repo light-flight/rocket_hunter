@@ -9,8 +9,10 @@ export type { QualificationFile }
 // without a network, and goes to the server when there is one. The server has the model read
 // it; what it read comes back as each kart's best laps, and the phone averages them.
 
-// The same limit as the server's (app/models/qualification_file.rb).
+// The same limit as the server's (app/models/qualification_file.rb), for what is sent.
 const SIZE_LIMIT = 20 * 1024 * 1024
+// A photo is made small before it is sent: this only keeps the phone's storage sane.
+const PHOTO_LIMIT = 100 * 1024 * 1024
 // What the model reads. HEIC is not among them: iOS turns it into JPEG for this list.
 export const ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf'
 const READABLE = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif']
@@ -44,11 +46,12 @@ export async function addFiles(raceId: string, picked: File[]): Promise<void> {
   await db.transaction('rw', db.files, db.uploads, async () => {
     for (const [index, { file, data }] of read.entries()) {
       const id = newId()
+      const photo = shrinks(file.type)
       const refused =
         data === null
           ? 'Не удалось прочитать файл на телефоне'
-          : file.size > SIZE_LIMIT
-            ? 'Файл больше 20 МБ'
+          : file.size > (photo ? PHOTO_LIMIT : SIZE_LIMIT)
+            ? `Файл больше ${photo ? 100 : 20} МБ`
             : !READABLE.includes(file.type)
               ? 'Не PDF и не фото'
               : null
@@ -56,7 +59,7 @@ export async function addFiles(raceId: string, picked: File[]): Promise<void> {
       await db.files.add({
         id,
         raceId,
-        name: file.name || 'Файл',
+        name: label(file, now + index),
         addedAt: now + index,
         status: refused ? 'failed' : 'local',
         laps: {},
@@ -69,6 +72,18 @@ export async function addFiles(raceId: string, picked: File[]): Promise<void> {
       if (!refused && data) await db.uploads.add({ id, type: file.type, data, prepared: 0 })
     }
   })
+}
+
+// Every photo the camera takes in the picker is "image.jpg": those get the time they were taken.
+function label(file: File, at: number): string {
+  if (file.name && !/^image\.(jpe?g|png|heic|heif|webp)$/i.test(file.name)) return file.name
+
+  const time = new Date(at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return `${file.type.startsWith('image/') ? 'Фото' : 'Файл'} ${time}`
+}
+
+function shrinks(type: string): boolean {
+  return type.startsWith('image/') && type !== 'image/gif'
 }
 
 // Hidden at once, and gone from the server with the next exchange. Even a file that has not
@@ -84,7 +99,12 @@ export async function rereadFile(file: QualificationFile, onSignedOut: () => voi
   if (!response?.ok) return false
 
   const server = await serverFile(response)
-  if (server) await db.files.update(file.id, fromServer(file.raceId, server))
+  if (server) {
+    await db.transaction('rw', db.files, async () => {
+      // Taken out while the request was on its way: that wins.
+      if ((await db.files.get(file.id))?.deleted === 0) await db.files.put(fromServer(file.raceId, server))
+    })
+  }
   return server !== null
 }
 
@@ -201,14 +221,18 @@ async function exchange(onSignedOut: () => void): Promise<void> {
   }
 
   const sentTo = new Set<string>()
-  for (const file of await db.files.where('pending').equals(1).toArray()) {
-    if (file.deleted === 1 || file.status !== 'local') continue
+  const waiting = (await db.files.where('pending').equals(1).toArray())
+    .filter((file) => file.deleted === 0 && file.status === 'local')
+    // A file that keeps timing out goes after the others rather than holding them back.
+    .sort((a, b) => (timeouts.get(a.id) ?? 0) - (timeouts.get(b.id) ?? 0) || a.addedAt - b.addedAt)
+
+  for (const file of waiting) {
     // A race the server does not have yet would only refuse it after the whole upload.
     if ((await db.races.get(file.raceId))?.pending !== 0) continue
 
     const bytes = await prepared(file.id)
-    if (!bytes) {
-      await db.files.update(file.id, { status: 'failed', error: 'Файл потерялся на телефоне', pending: 0 })
+    if (!bytes || bytes.data.byteLength > SIZE_LIMIT) {
+      await refuse(file.id, bytes ? 'Файл больше 20 МБ' : 'Файл потерялся на телефоне')
       continue
     }
 
@@ -217,22 +241,30 @@ async function exchange(onSignedOut: () => void): Promise<void> {
     form.append('name', file.name)
     form.append('added_at', new Date(file.addedAt).toISOString())
     const response = await upload(`/races/${file.raceId}/qualification_files/${file.id}`, form)
-    if (response === null) return
+    // No network, or too slow for this file: the lists below still come.
+    if (response === null) {
+      timeouts.set(file.id, (timeouts.get(file.id) ?? 0) + 1)
+      break
+    }
+    timeouts.delete(file.id)
     if (response.status === 401) return onSignedOut()
     // The race is gone from the server: the list of races will take it away.
     if (response.status === 404) continue
 
     const server = response.ok ? await serverFile(response) : null
+    if (!server) {
+      // Only a server that says no for good loses the file; anything else (a restart, a proxy
+      // page, an overload) is tried again next time, and the PUT is the same file again.
+      if ([400, 413, 415, 422].includes(response.status)) await refuse(file.id, refusal(response.status))
+      else break
+      continue
+    }
+
     await db.transaction('rw', db.files, db.uploads, async () => {
       const now = await db.files.get(file.id)
       if (!now) return
-      if (server) {
-        // Deleted while on its way: the deletion goes next.
-        await db.files.put({ ...fromServer(file.raceId, server), pending: now.deleted, deleted: now.deleted })
-      } else {
-        // Refused for good: saying why is all that is left to do.
-        await db.files.update(file.id, { status: 'failed', error: refusal(response.status), sent: 0, pending: 0 })
-      }
+      // Taken out while on its way: the deletion goes next.
+      await db.files.put({ ...fromServer(file.raceId, server), pending: now.deleted, deleted: now.deleted })
       await db.uploads.delete(file.id)
     })
     sentTo.add(file.raceId)
@@ -264,6 +296,16 @@ async function exchange(onSignedOut: () => void): Promise<void> {
   }
 }
 
+// Refused for good: saying why is all that is left to do. A deletion made meanwhile still goes.
+async function refuse(id: string, reason: string) {
+  await db.transaction('rw', db.files, db.uploads, async () => {
+    const now = await db.files.get(id)
+    if (!now) return
+    await db.files.update(id, { status: 'failed', error: reason, sent: 0, pending: now.deleted })
+    await db.uploads.delete(id)
+  })
+}
+
 function refusal(status: number): string {
   if (status === 413) return 'Файл больше 20 МБ'
   if (status === 415) return 'Не PDF и не фото'
@@ -288,7 +330,7 @@ async function prepared(id: string): Promise<Upload | undefined> {
 }
 
 async function shrink(photo: Upload): Promise<Pick<Upload, 'data' | 'type'>> {
-  if (!photo.type.startsWith('image/') || photo.type === 'image/gif') return photo
+  if (!shrinks(photo.type)) return photo
 
   try {
     const bitmap = await createImageBitmap(new Blob([photo.data], { type: photo.type }), {
@@ -317,6 +359,9 @@ async function shrink(photo: Upload): Promise<Pick<Upload, 'data' | 'type'>> {
     return photo
   }
 }
+
+// How many times in a row each upload ran out of time, while the app is open.
+const timeouts = new Map<string, number>()
 
 let running: Promise<void> | null = null
 let again = false

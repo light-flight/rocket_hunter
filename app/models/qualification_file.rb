@@ -24,7 +24,7 @@ class QualificationFile < ApplicationRecord
   validates :content_type, inclusion: { in: [ *KINDS.keys, "image/webp" ], message: "не PDF и не фото" }
   validates :data, length: { maximum: SIZE_LIMIT }, on: :create
 
-  after_create_commit :read_later
+  after_create_commit -> { read_later(take_over: true) }
 
   # Everything but the bytes: lists never need them.
   scope :listed, -> { select(column_names - %w[ data ]) }
@@ -35,15 +35,29 @@ class QualificationFile < ApplicationRecord
     KINDS.find { |_, start| data.start_with?(start) }&.first
   end
 
-  # The same bytes already read in this race are not read again: the result is taken over.
-  def read_later
-    twin = race.qualification_files.listed.read.where(checksum: checksum).where.not(id: id).first
+  # A reading that has not finished by now never will: a deploy or a crash cut it off. Retries
+  # of a model out of reach take up to about twenty minutes.
+  STALE_AFTER = 30.minutes
+
+  # take_over: a new file whose bytes were already read in this race takes that result over
+  # instead of being read again. Reading again on request always asks the model.
+  def read_later(take_over: false)
+    twin = take_over && race.qualification_files.listed.read.where(checksum: checksum).where.not(id: id).first
     if twin
       update!(status: :read, laps: twin.laps, warnings: [ "Тот же файл, что «#{twin.name}»" ], model: twin.model, error: nil)
     else
       update!(status: :waiting, error: nil)
-      ReadQualificationJob.perform_later(self)
+      ReadQualificationJob.perform_later(id)
     end
+  end
+
+  # What the phones are told: a reading cut off long ago is a failed one they can read again.
+  def shown_status
+    stale? ? "failed" : status
+  end
+
+  def shown_error
+    stale? ? "Чтение прервалось, прочитайте снова" : error
   end
 
   def read_protocol
@@ -60,6 +74,10 @@ class QualificationFile < ApplicationRecord
   end
 
   private
+    def stale?
+      (waiting? || reading?) && updated_at < STALE_AFTER.ago
+    end
+
     def describe_data
       return if data.nil?
 

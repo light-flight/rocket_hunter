@@ -22,9 +22,9 @@ export function Qualification({ files, onSignedOut }: QualificationProps) {
   const [showFiles, setShowFiles] = useState(false)
   const [opened, setOpened] = useState<string | null>(null)
   const karts = rankKarts(files)
-  // Files still on their way, or that need a look, stay in sight. Once all are read they fold
-  // into one line above the karts.
-  const settled = files.every((file) => file.status === 'read')
+  // Files still on their way, or that need a look, stay in sight. Once all are read without
+  // a note they fold into one line above the karts.
+  const settled = files.every((file) => file.status === 'read' && file.warnings.length === 0)
   const openedFile = files.find((file) => file.id === opened)
 
   return (

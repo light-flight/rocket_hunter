@@ -215,10 +215,11 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await expect(karts.first()).toHaveText(/^1\s*1\s*40\.899\s*1 заезд/)
   await expect(karts.nth(1)).toHaveText(/^2\s*11\s*41\.167\s*1 заезд\s*\+0\.268$/)
 
-  // The same protocol again is not read twice, and its laps count once.
+  // The same protocol again is not read twice, and its laps count once. A file with a note
+  // keeps the list of files in sight.
   await picker.setInputFiles([pdf('Квала 9.pdf')])
-  await page.getByRole('button', { name: /2 протокола · 13 картов/ }).click({ timeout: 15_000 })
-  await expect(files.nth(1)).toContainText('есть замечания')
+  await expect(files).toHaveCount(2, { timeout: 15_000 })
+  await expect(files.nth(1)).toContainText('есть замечания', { timeout: 15_000 })
   await expect(karts.first()).toContainText('1 заезд')
 
   await files.nth(1).click()
@@ -227,7 +228,7 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await expect(sheet.getByRole('row')).toHaveCount(13)
   page.once('dialog', (dialog) => dialog.accept())
   await sheet.getByRole('button', { name: 'Убрать файл' }).click()
-  await expect(files).toHaveCount(1)
+  await expect(page.getByRole('button', { name: /1 протокол · 13 картов/ })).toBeVisible()
 
   // Another phone of the team sees the same files.
   const raceId = await page.evaluate(() => localStorage.getItem('rocket-hunter.race'))

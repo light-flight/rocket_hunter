@@ -54,8 +54,8 @@ module Api
       end
 
       def file_json(file)
-        { id: file.id, name: file.name, status: file.status, laps: file.laps, warnings: file.warnings,
-          error: file.error, added_at: file.created_at.iso8601(3) }
+        { id: file.id, name: file.name, status: file.shown_status, laps: file.laps, warnings: file.warnings,
+          error: file.shown_error, added_at: file.created_at.iso8601(3) }
       end
   end
 end

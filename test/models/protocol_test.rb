@@ -39,6 +39,12 @@ class ProtocolTest < ActiveSupport::TestCase
     assert_empty protocol.warnings
   end
 
+  test "two times are kept as they are: neither is the middle" do
+    protocol = Protocol.new([ { "kart" => "5", "best_lap" => "40.947" }, { "kart" => "11", "best_lap" => "1:04.180" } ])
+
+    assert_equal({ "5" => [ 40_947 ], "11" => [ 64_180 ] }, protocol.laps)
+  end
+
   test "leaves out what cannot be a best lap of this protocol and says so" do
     protocol = Protocol.new([
       { "kart" => "5", "best_lap" => "40.947" },

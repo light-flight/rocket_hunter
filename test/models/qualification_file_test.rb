@@ -54,6 +54,25 @@ class QualificationFileTest < ActiveSupport::TestCase
     assert_equal "Не задан ключ API модели", file.error
   end
 
+  test "a reading cut off long ago shows as failed, to be read again" do
+    file = @race.qualification_files.create!(name: "Квала 9.pdf", data: PDF)
+    file.reading!
+
+    assert_equal [ "reading", nil ], [ file.shown_status, file.shown_error ]
+    travel QualificationFile::STALE_AFTER + 1.minute do
+      assert_equal [ "failed", "Чтение прервалось, прочитайте снова" ], [ file.shown_status, file.shown_error ]
+    end
+  end
+
+  test "reading again asks the model even when the same bytes were read before" do
+    first = @race.qualification_files.create!(name: "Квала 9.pdf", data: PDF)
+    first.read_protocol
+    second = @race.qualification_files.create!(name: "Квала 9 (1).pdf", data: PDF)
+
+    assert_enqueued_with(job: ReadQualificationJob, args: [ second.id ]) { second.read_later }
+    assert second.reload.waiting?
+  end
+
   test "the same bytes in the same race are not read twice" do
     first = @race.qualification_files.create!(name: "Квала 9.pdf", data: PDF)
     first.read_protocol

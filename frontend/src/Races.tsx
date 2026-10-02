@@ -216,7 +216,7 @@ function FirstRace({ waiting, onCreate }: FirstRaceProps) {
             <p className="text-body text-fg-2">Назовите гонку этого уикенда — дальше вся работа идёт внутри неё.</p>
           </div>
           <div className="mt-6">{field}</div>
-          <div className="mt-5">{lanes}</div>
+          <div className="mt-5 [@media(max-height:700px)]:mt-3">{lanes}</div>
         </>
       )}
     </RaceFields>
@@ -241,7 +241,7 @@ function RaceForm({ title, action, initial, onSubmit, onCancel }: RaceFormProps)
           <BackLink onClick={onCancel}>Отмена</BackLink>
           <h1 className="mt-2 text-title font-bold">{title}</h1>
           <div className="mt-5">{field}</div>
-          <div className="mt-5">{lanes}</div>
+          <div className="mt-5 [@media(max-height:700px)]:mt-3">{lanes}</div>
         </>
       )}
     </RaceFields>
@@ -341,26 +341,35 @@ type RaceScreenProps = {
 
 type Tab = 'pits' | 'qualification'
 
-// How often the phone asks how the reading goes while a file is with the model, and for how long.
+// How often the phone asks how the reading goes while a file is with the model: often at
+// first, then now and then, for as long as anything is still being read.
 const POLL_MS = 3000
-const POLL_FOR_MS = 5 * 60_000
+const POLL_SLOWER_AFTER_MS = 5 * 60_000
+const SLOW_POLL_MS = 30_000
 
 // Inside a race. Before anything else, its qualification: the protocols to read and the karts
 // they rank. The pit screen comes at a later stage.
 function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScreenProps) {
   const files = useFiles(race.id)
   const [tab, setTab] = useState<Tab>('qualification')
+  const [saveFailed, setSaveFailed] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
-  const reading = files?.some((file) => file.status === 'waiting' || file.status === 'reading') ?? false
+  // The files with the model now. Another one joining, or one done, starts the quick asking anew.
+  const reading = (files ?? [])
+    .filter((file) => file.status === 'waiting' || file.status === 'reading')
+    .map((file) => file.id)
+    .join(' ')
 
   useEffect(() => {
     if (!reading) return
-    const until = Date.now() + POLL_FOR_MS
-    const timer = window.setInterval(() => {
-      if (Date.now() > until) return clearInterval(timer)
+    const started = Date.now()
+    let timer: number
+    const ask = () => {
       if (document.visibilityState === 'visible') syncFiles(onSignedOut)
-    }, POLL_MS)
-    return () => clearInterval(timer)
+      timer = window.setTimeout(ask, Date.now() - started < POLL_SLOWER_AFTER_MS ? POLL_MS : SLOW_POLL_MS)
+    }
+    timer = window.setTimeout(ask, POLL_MS)
+    return () => clearTimeout(timer)
   }, [reading, onSignedOut])
 
   async function pick(event: ChangeEvent<HTMLInputElement>) {
@@ -369,7 +378,13 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
     event.target.value = ''
     if (picked.length === 0) return
 
-    await addFiles(race.id, picked)
+    setSaveFailed(false)
+    try {
+      await addFiles(race.id, picked)
+    } catch {
+      setSaveFailed(true)
+      return
+    }
     setTab('qualification')
     onFilesAdded()
   }
@@ -400,6 +415,11 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
       {files === null && (
         <p role="alert" className="mt-6 text-center text-sm text-amber-400">
           Не удалось прочитать протоколы на телефоне.
+        </p>
+      )}
+      {saveFailed && (
+        <p role="alert" className="mt-6 text-center text-sm text-amber-400">
+          Не удалось сохранить файлы на телефоне. Попробуйте добавить их ещё раз.
         </p>
       )}
 
