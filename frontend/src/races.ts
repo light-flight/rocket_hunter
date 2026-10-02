@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api.ts'
 import { db, type Race } from './db.ts'
 
@@ -13,7 +13,7 @@ export type { Race }
 export const NAME_LIMIT = 100
 
 export function cleanName(name: string): string {
-  return name.replace(/\s+/g, ' ').trim()
+  return name.replace(/[\s\p{Cc}]+/gu, ' ').trim()
 }
 
 // All races on this phone, newest first. undefined until the database has answered.
@@ -98,6 +98,10 @@ async function exchange(onSignedOut: () => void): Promise<void> {
   })
 }
 
+// How often a change that has not reached the server is sent again while the app is on screen:
+// in the pits the network can come back without the phone ever noticing it was gone.
+const RETRY_MS = 30_000
+
 let running: Promise<void> | null = null
 let again = false
 
@@ -125,11 +129,27 @@ function syncRaces(onSignedOut: () => void): Promise<void> {
 }
 
 // Keeps this phone and the server in step: at launch, when the network comes back, when the
-// app returns to the screen, and after every change made here (call sync). synced turns true
-// once the first exchange has finished, whether or not the server answered.
-export function useRaceSync(onSignedOut: () => void) {
+// app returns to the screen, after signing in again, after every change made here (call sync),
+// and every half a minute while a change is still waiting. synced turns true once the first
+// exchange has finished, whether or not the server answered. A 401 is checked by onSignedOut:
+// an answer to a request sent before signing in again says nothing about the new session.
+export function useRaceSync(onSignedOut: () => void, expired: boolean) {
   const [synced, setSynced] = useState(false)
   const sync = useCallback(() => syncRaces(onSignedOut), [onSignedOut])
+  const wasExpired = useRef(expired)
+
+  useEffect(() => {
+    if (wasExpired.current && !expired) sync()
+    wasExpired.current = expired
+  }, [expired, sync])
+
+  useEffect(() => {
+    const timer = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      if ((await db.races.where('pending').equals(1).count().catch(() => 0)) > 0) sync()
+    }, RETRY_MS)
+    return () => clearInterval(timer)
+  }, [sync])
 
   useEffect(() => {
     let active = true

@@ -135,9 +135,16 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
   await expect(sessionExpired).toBeVisible()
   await expect(raceName).toHaveText('Этап 2 · Сочи')
 
+  // A race made meanwhile goes to the server as soon as the manager is back.
+  await page.getByRole('button', { name: 'Все гонки' }).click()
+  await page.getByRole('button', { name: 'Новая гонка' }).click()
+  await field.fill('Этап 4')
+  await field.press('Enter')
+  await expect(raceName).toHaveText('Этап 4')
+
   await confirmInTelegram(page, request)
   await expect(sessionExpired).toHaveCount(0, { timeout: 10_000 })
-  await expect(raceName).toHaveText('Этап 2 · Сочи')
+  await expect.poll(() => racesOnServer(page)).toContain('Этап 4')
 
   await page.getByRole('button', { name: 'Все гонки' }).click()
   await page.getByRole('button', { name: 'Менеджер: Иван Петров' }).click()

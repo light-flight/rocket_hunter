@@ -33,7 +33,7 @@ type RacesProps = { user: User; auth: Auth }
 
 export function Races({ user, auth }: RacesProps) {
   const races = useRaces()
-  const { sync, synced } = useRaceSync(auth.markExpired)
+  const { sync, synced } = useRaceSync(auth.check, auth.expired)
   const [selectedId, setSelectedId] = useState(storedSelection)
   const [screen, setScreen] = useState<Screen>('race')
   // A race removed on the server leaves the list, and the app goes back to it.
