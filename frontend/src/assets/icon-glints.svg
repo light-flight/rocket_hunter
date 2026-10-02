@@ -1,0 +1,67 @@
+<!-- The gloss of the tiles of public/logo.svg, laid over it. The letters and their outline are cut out. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="gloss-0" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.1"/>
+    </linearGradient>
+    <linearGradient id="gloss-1" x1="0" y1="0.25" x2="1" y2="0.75">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.1"/>
+    </linearGradient>
+    <linearGradient id="gloss-2" x1="0.25" y1="0" x2="0.75" y2="1">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.1"/>
+    </linearGradient>
+    <mask id="tiles">
+      <rect width="512" height="512" fill="#fff"/>
+      <g transform="translate(256 256) skewX(-10) scale(1.05) translate(-173 -100)" stroke="#000" stroke-width="20" stroke-linejoin="round">
+        <polygon points="62,120 124,120 164,200 100,200"/>
+        <rect width="54" height="200"/>
+        <path d="M0 0H96A64 64 0 0 1 96 128H0Z"/>
+        <rect x="186" width="54" height="200"/>
+        <rect x="292" width="54" height="200"/>
+        <rect x="186" y="78" width="160" height="44"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#tiles)">
+  <polygon points="-57.2,568.9 -48.8,577.3 3.5,533.2 -7.6,514.8" fill="url(#gloss-0)" opacity="0.07"/>
+  <polygon points="-53.7,477.6 -36.8,488.3 10.4,425.6 -28.9,410.5" fill="url(#gloss-1)" opacity="0.03"/>
+  <polygon points="-30.8,491.9 -8.0,504.5 41.5,438.5 17.2,428.3" fill="url(#gloss-2)" opacity="0.05"/>
+  <polygon points="16.9,521.2 66.5,476.3 47.6,444.8" fill="url(#gloss-1)" opacity="0.03"/>
+  <polygon points="39.5,557.7 39.5,573.3 106.8,539.2 98.1,510.0" fill="url(#gloss-0)" opacity="0.17"/>
+  <polygon points="20.7,422.2 44.0,431.9 50.7,358.5" fill="url(#gloss-0)" opacity="0.13"/>
+  <polygon points="51.7,424.0 93.0,364.1 59.0,344.7" fill="url(#gloss-1)" opacity="0.14"/>
+  <polygon points="51.2,437.1 69.6,467.8 90.3,380.3" fill="url(#gloss-1)" opacity="0.13"/>
+  <polygon points="76.4,477.3 100.6,499.8 175.2,462.5 151.9,420.2" fill="url(#gloss-2)" opacity="0.15"/>
+  <polygon points="104.2,505.8 112.6,534.0 165.1,475.3" fill="url(#gloss-1)" opacity="0.03"/>
+  <polygon points="128.8,526.4 187.6,491.5 178.9,470.5" fill="url(#gloss-2)" opacity="0.04"/>
+  <polygon points="115.7,542.3 133.9,574.2 221.7,561.2 190.5,497.9" fill="url(#gloss-2)" opacity="0.03"/>
+  <polygon points="102.7,362.7 152.6,409.8 204.5,345.0 160.0,290.6" fill="url(#gloss-0)" opacity="0.03"/>
+  <polygon points="157.2,415.4 181.0,458.5 254.8,392.9 209.4,350.1" fill="url(#gloss-0)" opacity="0.06"/>
+  <polygon points="185.6,468.3 194.2,489.2 269.1,479.8" fill="url(#gloss-2)" opacity="0.11"/>
+  <polygon points="188.0,461.6 290.4,475.7 258.6,398.9" fill="url(#gloss-1)" opacity="0.13"/>
+  <polygon points="197.3,495.9 229.0,560.0 308.7,544.3 293.4,483.9" fill="url(#gloss-1)" opacity="0.18"/>
+  <polygon points="-79.8,181.2 -27.2,194.8 7.7,102.3" fill="url(#gloss-1)" opacity="0.17"/>
+  <polygon points="112.6,251.4 159.7,280.7 236.5,216.9 176.7,189.2" fill="url(#gloss-1)" opacity="0.17"/>
+  <polygon points="301.0,485.5 315.5,542.8 401.9,521.4" fill="url(#gloss-1)" opacity="0.03"/>
+  <polygon points="304.2,479.2 409.5,516.7 393.4,425.6" fill="url(#gloss-1)" opacity="0.03"/>
+  <polygon points="-85.5,95.1 9.8,87.0 -60.4,-17.3" fill="url(#gloss-2)" opacity="0.14"/>
+  <polygon points="20.6,88.9 93.5,138.7 142.0,30.5 61.8,14.0" fill="url(#gloss-0)" opacity="0.07"/>
+  <polygon points="99.6,142.4 174.6,180.4 231.2,81.3 148.6,33.0" fill="url(#gloss-1)" opacity="0.03"/>
+  <polygon points="180.9,183.4 239.2,210.4 233.1,92.1" fill="url(#gloss-2)" opacity="0.04"/>
+  <polygon points="251.0,219.0 298.3,265.4 367.8,211.2" fill="url(#gloss-2)" opacity="0.05"/>
+  <polygon points="401.3,414.1 474.5,384.1 436.6,286.1" fill="url(#gloss-2)" opacity="0.07"/>
+  <polygon points="-52.9,-27.0 57.5,5.6 83.7,-101.1" fill="url(#gloss-2)" opacity="0.03"/>
+  <polygon points="64.3,7.3 144.6,23.9 186.2,-109.3 91.8,-104.6" fill="url(#gloss-2)" opacity="0.04"/>
+  <polygon points="154.9,28.5 234.2,74.9 271.7,-19.6" fill="url(#gloss-0)" opacity="0.20"/>
+  <polygon points="329.3,134.0 379.7,202.0 472.5,128.6 370.1,76.5" fill="url(#gloss-0)" opacity="0.06"/>
+  <polygon points="440.5,276.9 480.9,381.3 606.4,324.2 564.1,225.6" fill="url(#gloss-2)" opacity="0.06"/>
+  <polygon points="483.8,387.7 533.8,486.9 603.9,333.1" fill="url(#gloss-0)" opacity="0.06"/>
+  <polygon points="379.2,65.0 565.8,4.3 494.1,-75.6" fill="url(#gloss-1)" opacity="0.05"/>
+  </g>
+</svg>

@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from './api.ts'
 import { type User, userFrom } from './auth.ts'
+import { Masthead, Palm } from './glove.tsx'
+import { MainAction, TelegramMark } from './ui.tsx'
 
 type Attempt = { telegramUrl: string; expiresAt: number }
 
 const ATTEMPT_KEY = 'rocket-hunter.sign-in'
 
-const INSTALL_HINT =
-  'Сначала установите приложение. iPhone: откройте эту страницу в Safari, «Поделиться» → ' +
-  '«На экран „Домой“». Android: откройте в Chrome, меню → «Установить приложение». Если страница ' +
-  'открылась внутри Telegram, выберите «Открыть в браузере». Потом откройте Rocket Hunter с иконки ' +
-  'и войдите там: на iPhone вход в браузере в приложение не переносится.'
 const STEPS =
   '1. Откройте Telegram и нажмите «Запустить», затем «Войти».\n' +
   '2. Вернитесь в это приложение — вход выполнится сам.'
@@ -55,10 +52,15 @@ async function attemptFrom(response: Response): Promise<Attempt | null> {
   return { telegramUrl: body.telegram_url, expiresAt: Date.now() + body.expires_in * 1000 }
 }
 
-type SignInProps = { onSignedIn: (user: User) => void; installHint?: boolean }
+type SignInProps = {
+  onSignedIn: (user: User) => void
+  // The sign-in screen itself, not the "sign in again" banner: the icon and the name above,
+  // the palm below, the main action at the bottom, under the thumb.
+  screen?: boolean
+}
 
 // Used by the sign-in screen and by the "sign in again" banner.
-export function SignIn({ onSignedIn, installHint = false }: SignInProps) {
+export function SignIn({ onSignedIn, screen = false }: SignInProps) {
   const [stored] = useState(storedAttempt)
   const [attempt, setAttempt] = useState(stored.attempt)
   const [starting, setStarting] = useState(false)
@@ -152,36 +154,34 @@ export function SignIn({ onSignedIn, installHint = false }: SignInProps) {
     setNotice(null)
   }
 
+  const layout = `flex flex-col gap-3 ${screen ? 'flex-1' : ''}`
+
   if (!attempt) {
     return (
-      <div className="flex flex-col gap-3">
-        {installHint && <p className="text-white/80">{INSTALL_HINT}</p>}
+      <div className={layout}>
+        {screen && <Palm />}
+        {screen && <Masthead />}
         {notice && <p className="text-amber-400">{notice}</p>}
-        <button
-          type="button"
-          onClick={start}
-          disabled={starting}
-          className="rounded-xl bg-white px-4 py-3 font-semibold text-black active:opacity-70 disabled:opacity-50"
-        >
-          Войти через Telegram
-        </button>
+        <div className="mt-auto">
+          <MainAction onClick={start} disabled={starting}>
+            <TelegramMark />
+            Войти через Telegram
+          </MainAction>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className={layout}>
+      {screen && <Palm />}
+      {screen && <Masthead compact />}
       <p className="whitespace-pre-line">{STEPS}</p>
       {/* A real link tapped by the manager: only that hands over to the Telegram app.
-          target="_blank" keeps this page alive behind it. */}
-      <a
-        href={attempt.telegramUrl}
-        target="_blank"
-        rel="noopener"
-        className="rounded-xl bg-white px-4 py-3 text-center font-semibold text-black active:opacity-70"
-      >
+          A new tab keeps this page alive behind it. */}
+      <MainAction href={attempt.telegramUrl} newTab>
         Открыть Telegram
-      </a>
+      </MainAction>
       <p role="status" className={unreachable ? 'text-amber-400' : 'text-white/60'}>
         {unreachable ? 'Нет связи с сервером, пробуем снова…' : 'Ждём подтверждения в Telegram…'}
       </p>

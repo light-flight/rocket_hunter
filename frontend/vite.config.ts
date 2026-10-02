@@ -31,8 +31,13 @@ export default defineConfig({
         short_name: 'Rocket Hunter',
         lang: 'ru',
         display: 'standalone',
-        theme_color: '#0b0f14',
-        background_color: '#0b0f14',
+        theme_color: '#060607',
+        background_color: '#060607',
+        // Lets a Chrome tab on Android tell that the app is already installed
+        // (navigator.getInstalledRelatedApps), so it does not offer to install it again.
+        related_applications: [
+          { platform: 'webapp', url: 'https://app.rocket-hunter.ru/manifest.webmanifest' },
+        ],
         icons: [
           { src: 'pwa-64x64.png', sizes: '64x64', type: 'image/png' },
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },

@@ -1,4 +1,4 @@
-import { type APIRequestContext, expect, type Page, test } from '@playwright/test'
+import { type APIRequestContext, type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 // Does what the manager does in Telegram, through the real webhook: opens the bot with the
 // link from the app, then presses «Войти». The sender is the manager "one" from the fixtures;
@@ -33,7 +33,14 @@ async function confirmInTelegram(page: Page, request: APIRequestContext) {
   expect((await answer.json()).text).toContain('Готово')
 }
 
+// A phone signs in only inside the installed app. The tests run in a browser tab, so they say
+// what the Home Screen app of an iPhone says about itself.
+async function asInstalled(context: BrowserContext) {
+  await context.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }))
+}
+
 test('signs in, then opens and stays usable without a network', async ({ page, context, request }) => {
+  await asInstalled(context)
   const signInButton = page.getByRole('button', { name: 'Войти через Telegram' })
   const currentUser = page.getByTestId('current-user')
   const sessionExpired = page.getByTestId('session-expired')
@@ -106,4 +113,55 @@ test('server paths are answered by Rails, not by the cached app shell', async ({
 
   expect(response?.fromServiceWorker()).toBe(false)
   await expect(page.locator('#root')).toHaveCount(0)
+})
+
+test.describe('in a browser on a phone, before the app is installed', () => {
+  const signInButton = { name: 'Войти через Telegram' }
+
+  test('Android offers to install, by a key or by steps, and no sign-in', async ({ page }) => {
+    await page.goto('/')
+
+    await expect(page.getByRole('heading', { name: 'Установите приложение' })).toBeVisible()
+    await expect(page.getByRole('button', signInButton)).toHaveCount(0)
+  })
+
+  test('inside Telegram on Android the way out is a link that opens Chrome', async ({ page, context }) => {
+    await context.addInitScript(() => Object.assign(window, { TelegramWebview: {} }))
+    await page.goto('/')
+
+    await expect(page.getByRole('link', { name: 'Открыть в Chrome' })).toHaveAttribute(
+      'href',
+      'intent://localhost:3100/#Intent;scheme=https;package=com.android.chrome;end',
+    )
+    await expect(page.getByRole('button', signInButton)).toHaveCount(0)
+  })
+
+  test.describe('Safari 26 on iPhone', () => {
+    test.use({
+      userAgent:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1',
+    })
+
+    test('shows the steps of its own menus', async ({ page }) => {
+      await page.goto('/')
+
+      await expect(page.getByRole('listitem')).toHaveText([
+        /Ещё.*Поделиться/,
+        /Добавить на экран «Домой»/,
+        /Добавить.*переключатель/,
+        /Rocket\sHunter.*на экране «Домой»/,
+      ])
+      await expect(page.getByRole('button', signInButton)).toHaveCount(0)
+    })
+
+    test('inside Telegram the way out is a link that opens Safari', async ({ page, context }) => {
+      await context.addInitScript(() => Object.assign(window, { TelegramWebviewProxy: {} }))
+      await page.goto('/')
+
+      await expect(page.getByRole('link', { name: 'Открыть в Safari' })).toHaveAttribute(
+        'href',
+        'x-safari-https://localhost:3100/',
+      )
+    })
+  })
 })

@@ -1,11 +1,14 @@
+import { useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useAuth } from './auth.ts'
 import { Home } from './Home.tsx'
+import { Install } from './Install.tsx'
+import { situation } from './install.ts'
 import { SignIn } from './SignIn.tsx'
-import { isInstalled } from './status.ts'
 
 function App() {
   const auth = useAuth()
+  const [before] = useState(situation)
 
   const {
     needRefresh: [needRefresh],
@@ -30,9 +33,8 @@ function App() {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-4 px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-      <h1 className="text-2xl font-bold">Rocket Hunter</h1>
-
+    // No screen has a header. Positioned and isolated for the background a screen lays under itself.
+    <main className="relative isolate mx-auto flex min-h-dvh max-w-md flex-col gap-4 px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)]">
       {needRefresh && (
         <button
           type="button"
@@ -43,11 +45,7 @@ function App() {
         </button>
       )}
 
-      {auth.user === null ? (
-        <section className="rounded-2xl bg-white/5 p-4">
-          <SignIn onSignedIn={auth.signedIn} installHint={!isInstalled()} />
-        </section>
-      ) : (
+      {auth.user !== null ? (
         <>
           {/* A lost session never hides the app: it only asks to sign in again. */}
           {auth.expired && (
@@ -60,10 +58,14 @@ function App() {
             </section>
           )}
           <Home user={auth.user} auth={auth} />
+          <p className="mt-auto text-center text-xs text-white/40">Сборка {__BUILD_ID__}</p>
         </>
+      ) : before.step === 'none' ? (
+        <SignIn onSignedIn={auth.signedIn} screen />
+      ) : (
+        // A phone signs in inside the installed app only.
+        <Install situation={before} />
       )}
-
-      <p className="mt-auto text-center text-xs text-white/40">Сборка {__BUILD_ID__}</p>
     </main>
   )
 }

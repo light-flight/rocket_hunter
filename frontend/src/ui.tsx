@@ -1,0 +1,39 @@
+import type { ComponentProps, ReactNode } from 'react'
+
+// The building blocks every screen is made of. The rules they follow are in STYLE.md.
+
+type MainActionProps = {
+  // Renders a link that looks like the key: only a real link hands over to another app.
+  href?: string
+  newTab?: boolean
+  children: ReactNode
+} & Pick<ComponentProps<'button'>, 'onClick' | 'disabled'>
+
+// The one main action of a screen.
+export function MainAction({ href, newTab = false, children, ...rest }: MainActionProps) {
+  const className =
+    'flex h-15 w-full shrink-0 items-center justify-center gap-2.5 rounded-lg bg-action px-4 text-key ' +
+    'font-semibold tracking-key text-on-action uppercase shadow-key active:opacity-70 disabled:opacity-50'
+
+  if (href !== undefined) {
+    return (
+      <a href={href} {...(newTab && { target: '_blank', rel: 'noopener' })} className={className}>
+        {children}
+      </a>
+    )
+  }
+  return (
+    <button type="button" className={className} {...rest}>
+      {children}
+    </button>
+  )
+}
+
+// The paper plane of the Telegram logo without its circle, in the colour of the text around it.
+export function TelegramMark() {
+  return (
+    <svg viewBox="4.536 7.224 13.032 10.8" aria-hidden="true" className="h-4 shrink-0 fill-current">
+      <path d="M16.906 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+    </svg>
+  )
+}
