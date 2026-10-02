@@ -15,14 +15,14 @@ class ReadQualificationJobTest < ActiveJob::TestCase
   end
 
   test "reads the protocol" do
-    ReadQualificationJob.perform_now(@file)
+    ReadQualificationJob.perform_now(@file.id)
 
     assert @file.reload.read?
   end
 
   test "a model out of reach is tried again, then the file is marked failed" do
     with_qualification(reader: OutOfReach.name) do
-      perform_enqueued_jobs(only: ReadQualificationJob) { ReadQualificationJob.perform_later(@file) }
+      perform_enqueued_jobs(only: ReadQualificationJob) { ReadQualificationJob.perform_later(@file.id) }
     end
 
     assert @file.reload.failed?
@@ -31,14 +31,14 @@ class ReadQualificationJobTest < ActiveJob::TestCase
 
   test "an error of the app itself never leaves the file reading" do
     with_qualification(reader: Broken.name) do
-      assert_raises(NoMethodError) { ReadQualificationJob.perform_now(@file) }
+      assert_raises(NoMethodError) { ReadQualificationJob.perform_now(@file.id) }
     end
 
     assert @file.reload.failed?
   end
 
   test "a file deleted before its turn is skipped" do
-    ReadQualificationJob.perform_later(@file)
+    ReadQualificationJob.perform_later(@file.id)
     @file.delete
 
     assert_nothing_raised { perform_enqueued_jobs }

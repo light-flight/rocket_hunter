@@ -53,6 +53,9 @@ class Protocol
     end
 
     def keep_plausible(times)
+      # Two times have no middle to judge them by: either could be the wrong one.
+      return times if times.size < 3
+
       middle = median(times.map(&:last))
       times.select do |kart, ms|
         next true if SPREAD.cover?(ms.fdiv(middle))

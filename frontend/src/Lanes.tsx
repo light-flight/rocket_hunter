@@ -4,7 +4,8 @@ import { LANES, lanesLabel } from './races.ts'
 // How many corridors the pit lane has: three segments, each a picture of the pit seen from
 // above with two karts waiting in every corridor. A thumb slides behind the one chosen. A press
 // chooses the segment under the finger and sliding moves the choice along, so a gloved hand
-// does not have to catch a small handle.
+// does not have to catch a small handle. On a short screen (iPhone SE) it gets lower, so the
+// key of the form stays above the keyboard.
 
 type LanesPickerProps = { value: number; onChange: (lanes: number) => void }
 
@@ -61,7 +62,7 @@ export function LanesPicker({ value, onChange }: LanesPickerProps) {
 
   return (
     <div className="flex flex-col gap-2">
-      <span id={label} className="text-sm text-fg-3">
+      <span id={label} className="text-sm text-fg-3 [@media(max-height:700px)]:sr-only">
         Коридоры в пите
       </span>
       <div
@@ -72,7 +73,7 @@ export function LanesPicker({ value, onChange }: LanesPickerProps) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         onKeyDown={onKeyDown}
-        className="relative flex h-25 touch-pan-y rounded-lg bg-field p-1 ring-1 ring-control select-none ring-inset"
+        className="relative flex h-25 touch-pan-y rounded-lg bg-field p-1 ring-1 ring-control select-none ring-inset [@media(max-height:700px)]:h-16"
       >
         <div
           aria-hidden="true"
@@ -90,7 +91,7 @@ export function LanesPicker({ value, onChange }: LanesPickerProps) {
               aria-label={lanesLabel(lanes)}
               tabIndex={chosen ? 0 : -1}
               onClick={() => onChange(lanes)}
-              className="relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-inset"
+              className="relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-inset [@media(max-height:700px)]:gap-0.5"
             >
               <Pit lanes={lanes} chosen={chosen} />
               <span
@@ -121,8 +122,9 @@ function Pit({ lanes, chosen }: { lanes: number; chosen: boolean }) {
     <svg
       viewBox={`0 0 ${width} ${LENGTH}`}
       aria-hidden="true"
-      className={`shrink-0 fill-current transition-colors ${chosen ? 'text-fg' : 'text-fg-off'}`}
-      style={{ width, height: LENGTH }}
+      className={`h-15 w-auto shrink-0 fill-current transition-colors [@media(max-height:700px)]:h-8 ${
+        chosen ? 'text-fg' : 'text-fg-off'
+      }`}
     >
       {Array.from({ length: lanes }, (_, corridor) => (
         <g key={corridor} transform={`translate(${corridor * (CORRIDOR + GAP)} 0)`}>
