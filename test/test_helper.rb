@@ -11,6 +11,14 @@ module ActiveSupport
     # Setup all fixtures in test/fixtures/*.yml for all tests in alphabetical order.
     fixtures :all
 
-    # Add more helper methods to be used by all tests here...
+    # Changes config.x.qualification (the reader, the API key) for the block only.
+    def with_qualification(**settings)
+      config = Rails.configuration.x.qualification
+      old = settings.keys.index_with { config[it] }
+      settings.each { |key, value| config[key] = value }
+      yield
+    ensure
+      old.each { |key, value| config[key] = value }
+    end
   end
 end

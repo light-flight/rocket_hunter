@@ -5,6 +5,8 @@ class Race < ApplicationRecord
   # Corridors in the pit lane: almost always one or two.
   LANES = 1..3
 
+  has_many :qualification_files, dependent: :delete_all
+
   # Control characters too: PostgreSQL refuses a NUL in a string.
   normalizes :name, with: ->(name) { name.gsub(/[[:cntrl:]]/, " ").squish }
 
