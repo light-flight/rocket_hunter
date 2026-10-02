@@ -6,12 +6,9 @@ module Telegram
   # anything else. No update_id bookkeeping is needed: a repeated update finds the work
   # already done and gets a harmless answer.
   class WebhooksController < ActionController::API
-    WELCOME = [
-      "Вы в команде Rocket Hunter.",
-      "1. Откройте app.rocket-hunter.ru в Safari (iPhone) или Chrome (Android), не внутри Telegram.",
-      "2. Добавьте приложение на экран «Домой».",
-      "3. Откройте его с иконки и нажмите «Войти через Telegram»."
-    ].join("\n")
+    # The full address: Telegram for iPhone opens a bare domain over http. The page itself
+    # leads the manager through installing the app, whatever browser it opens in.
+    WELCOME = "Вы в команде Rocket Hunter.\nОткройте https://app.rocket-hunter.ru"
     HELP = "Чтобы войти, откройте приложение Rocket Hunter и нажмите «Войти через Telegram»."
     REFUSAL = "Это бот команды Rocket Hunter. Вход только по приглашению: попросите ссылку у менеджера команды. " \
       "Если ссылка у вас была, она уже использована или устарела."
