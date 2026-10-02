@@ -101,5 +101,8 @@
 - Главная кнопка — `frontend/src/ui.tsx`.
 - Шаг установки перед входом — `frontend/src/Install.tsx`, выбор ситуации в `frontend/src/install.ts`.
 - Экраны гонок — `frontend/src/Races.tsx`, меню менеджера — `frontend/src/Menu.tsx`.
-- Макеты (вход — артборд B2, установка — ряд «Установка приложения», гонки — ряд «Гонки»):
+- Выбор коридоров — `frontend/src/Lanes.tsx`, квалификация (протоколы, карты, шторка файла) —
+  `frontend/src/Qualification.tsx`.
+- Макеты (вход — артборд B2, установка — ряд «Установка приложения», гонки — ряд «Гонки»,
+  коридоры и квалификация — ряд «Коридоры и квалификация»):
   https://claude.ai/artifact/Tv7bU3JQkzL7ZpAKMyBY6K

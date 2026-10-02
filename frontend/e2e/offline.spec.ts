@@ -179,6 +179,63 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
   await expect(rows).toHaveCount(0)
 })
 
+test('keeps qualification protocols without a network and ranks the karts once they are read', async ({
+  page,
+  context,
+  request,
+}) => {
+  await asInstalled(context)
+  await page.goto('/')
+  await confirmInTelegram(page, request)
+
+  // The races of the previous test are there: this one makes its own.
+  await page.getByRole('button', { name: 'Новая гонка' }).click({ timeout: 10_000 })
+  await page.getByLabel('Название гонки').fill('Этап 5 · Тольятти')
+  await page.getByRole('button', { name: 'Создать гонку' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Этап 5 · Тольятти')
+  await expect.poll(() => racesOnServer(page)).toContain('Этап 5 · Тольятти')
+  await expect(page.getByRole('button', { name: 'Добавить квалификацию' })).toBeVisible()
+
+  const picker = page.locator('input[type=file]')
+  const pdf = (name: string) => ({ name, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF-1.4\n% ${name}\n`) })
+  const files = page.getByRole('region', { name: 'Протоколы' }).getByRole('listitem')
+  const karts = page.getByTestId('kart')
+
+  // Picked without a network: kept on the phone, through a restart, until there is one.
+  await context.setOffline(true)
+  await picker.setInputFiles([pdf('Квала 9.pdf')])
+  await expect(files).toHaveText([/Квала 9\.pdf.*Ждёт сети/])
+  await page.reload()
+  await expect(files).toHaveText([/Квала 9\.pdf.*Ждёт сети/])
+
+  await context.setOffline(false)
+  await expect(files).toHaveCount(0, { timeout: 15_000 })
+  await expect(page.getByRole('button', { name: /1 протокол · 13 картов/ })).toBeVisible()
+  await expect(karts).toHaveCount(13)
+  await expect(karts.first()).toHaveText(/^1\s*1\s*40\.899\s*1 заезд/)
+  await expect(karts.nth(1)).toHaveText(/^2\s*11\s*41\.167\s*1 заезд\s*\+0\.268$/)
+
+  // The same protocol again is not read twice, and its laps count once.
+  await picker.setInputFiles([pdf('Квала 9.pdf')])
+  await page.getByRole('button', { name: /2 протокола · 13 картов/ }).click({ timeout: 15_000 })
+  await expect(files.nth(1)).toContainText('есть замечания')
+  await expect(karts.first()).toContainText('1 заезд')
+
+  await files.nth(1).click()
+  const sheet = page.getByRole('dialog')
+  await expect(sheet).toContainText('Тот же файл, что «Квала 9.pdf»')
+  await expect(sheet.getByRole('row')).toHaveCount(13)
+  page.once('dialog', (dialog) => dialog.accept())
+  await sheet.getByRole('button', { name: 'Убрать файл' }).click()
+  await expect(files).toHaveCount(1)
+
+  // Another phone of the team sees the same files.
+  const raceId = await page.evaluate(() => localStorage.getItem('rocket-hunter.race'))
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/races/${raceId}/qualification_files`)).json()).files.length)
+    .toBe(1)
+})
+
 test('a database that cannot be opened leaves a way out, not a blank screen', async ({ page, context }) => {
   await asInstalled(context)
   await context.addInitScript(() => {

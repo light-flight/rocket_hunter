@@ -21,3 +21,18 @@ export async function api(
     return null
   }
 }
+
+// Sends a file: the body is multipart, so the browser sets its own Content-Type.
+export async function upload(path: string, form: FormData, timeoutMs = 90_000): Promise<Response | null> {
+  try {
+    return await fetch(`/api${path}`, {
+      method: 'PUT',
+      headers: { Accept: 'application/json' },
+      body: form,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  } catch {
+    return null
+  }
+}

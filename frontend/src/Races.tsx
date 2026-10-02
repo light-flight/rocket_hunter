@@ -1,8 +1,10 @@
-import { type FormEvent, type ReactNode, useState } from 'react'
+import { type ChangeEvent, type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Auth, User } from './auth.ts'
 import { Masthead, Palm } from './glove.tsx'
 import { LanesPicker } from './Lanes.tsx'
 import { Menu } from './Menu.tsx'
+import { Qualification } from './Qualification.tsx'
+import { ACCEPT, addFiles, syncFiles, useFiles, watchRaces } from './qualification.ts'
 import {
   cleanName,
   createRace,
@@ -14,7 +16,7 @@ import {
   useRaceSync,
 } from './races.ts'
 import { StorageTrouble } from './Trouble.tsx'
-import { ActionArea, BackLink, ChevronRight, MainAction, NotSent, Plus, TextField } from './ui.tsx'
+import { ActionArea, BackLink, ChevronRight, MainAction, NotSent, Paperclip, Plus, TextField } from './ui.tsx'
 
 // The app after signing in. All work is done inside one race; the app opens in the race
 // chosen last, and the list of races is one step back from it.
@@ -49,11 +51,20 @@ export function Races({ user, auth }: RacesProps) {
   const [screen, setScreen] = useState<Screen>('race')
   // A race removed on the server leaves the list, and the app goes back to it.
   const selected = races?.find((race) => race.id === selectedId)
+  // The files of the race open now, and of this weekend's, are kept on the phone.
+  const newest = races?.[0]?.id
+
+  useEffect(() => {
+    watchRaces([selected?.id, newest].filter((id) => id !== undefined))
+  }, [selected?.id, newest])
 
   function open(id: string) {
     storeSelection(id)
     setSelectedId(id)
     setScreen('race')
+    // Brings its files, should another phone have added some.
+    watchRaces([id, newest].filter((race) => race !== undefined))
+    sync()
   }
 
   async function create(name: string, lanes: number) {
@@ -96,7 +107,15 @@ export function Races({ user, auth }: RacesProps) {
     )
   }
   if (screen === 'race' && selected) {
-    return <RaceScreen race={selected} onBack={() => setScreen('list')} onEdit={() => setScreen('edit')} />
+    return (
+      <RaceScreen
+        race={selected}
+        onBack={() => setScreen('list')}
+        onEdit={() => setScreen('edit')}
+        onFilesAdded={sync}
+        onSignedOut={auth.check}
+      />
+    )
   }
   return (
     <RaceList
@@ -312,13 +331,54 @@ function RaceList({ races, selectedId, onOpen, onNew, user, auth }: RaceListProp
   )
 }
 
-type RaceScreenProps = { race: Race; onBack: () => void; onEdit: () => void }
+type RaceScreenProps = {
+  race: Race
+  onBack: () => void
+  onEdit: () => void
+  onFilesAdded: () => void
+  onSignedOut: () => void
+}
 
-// Inside a race. For now only its name and corridors: the pit screen comes at a later stage.
-function RaceScreen({ race, onBack, onEdit }: RaceScreenProps) {
+type Tab = 'pits' | 'qualification'
+
+// How often the phone asks how the reading goes while a file is with the model, and for how long.
+const POLL_MS = 3000
+const POLL_FOR_MS = 5 * 60_000
+
+// Inside a race. Before anything else, its qualification: the protocols to read and the karts
+// they rank. The pit screen comes at a later stage.
+function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScreenProps) {
+  const files = useFiles(race.id)
+  const [tab, setTab] = useState<Tab>('qualification')
+  const picker = useRef<HTMLInputElement>(null)
+  const reading = files?.some((file) => file.status === 'waiting' || file.status === 'reading') ?? false
+
+  useEffect(() => {
+    if (!reading) return
+    const until = Date.now() + POLL_FOR_MS
+    const timer = window.setInterval(() => {
+      if (Date.now() > until) return clearInterval(timer)
+      if (document.visibilityState === 'visible') syncFiles(onSignedOut)
+    }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [reading, onSignedOut])
+
+  async function pick(event: ChangeEvent<HTMLInputElement>) {
+    const picked = [...(event.target.files ?? [])]
+    // The camera hands over one photo per pick: the next pick starts afresh.
+    event.target.value = ''
+    if (picked.length === 0) return
+
+    await addFiles(race.id, picked)
+    setTab('qualification')
+    onFilesAdded()
+  }
+
+  const empty = files?.length === 0
+
   return (
     <div className="flex flex-1 flex-col">
-      <Palm />
+      <Palm size={empty ? undefined : 'short'} />
       <BackLink onClick={onBack} arrow>
         Все гонки
       </BackLink>
@@ -333,10 +393,84 @@ function RaceScreen({ race, onBack, onEdit }: RaceScreenProps) {
           Изменить
         </button>
       </div>
-      <div className="mt-[14dvh] flex flex-col gap-1.5 px-2 text-center text-balance">
-        <p className="text-name text-fg-2">Здесь будет экран пит-стопов</p>
-        <p className="text-sm text-fg-3">Машины и коридоры появятся на следующем этапе</p>
-      </div>
+
+      {/* The phone's own picker: Photos, the camera and Files. */}
+      <input ref={picker} type="file" multiple accept={ACCEPT} onChange={pick} hidden />
+
+      {files === null && (
+        <p role="alert" className="mt-6 text-center text-sm text-amber-400">
+          Не удалось прочитать протоколы на телефоне.
+        </p>
+      )}
+
+      {empty && (
+        <>
+          <div className="mt-[14dvh] flex flex-col gap-1.5 px-2 text-center text-balance">
+            <p className="text-name text-fg-2">Добавьте протоколы квалификации</p>
+            <p className="text-sm text-fg-3">Карты встанут от быстрого к медленному</p>
+          </div>
+          <ActionArea>
+            <p className="text-center text-sm text-fg-3">PDF или фото, можно несколько</p>
+            <MainAction onClick={() => picker.current?.click()}>
+              <Paperclip />
+              Добавить квалификацию
+            </MainAction>
+          </ActionArea>
+        </>
+      )}
+
+      {files && files.length > 0 && (
+        <>
+          <div role="tablist" className="mt-2 grid grid-cols-2 border-b border-control">
+            <RaceTab id="pits" current={tab} onSelect={setTab}>
+              Пит-стопы
+            </RaceTab>
+            <RaceTab id="qualification" current={tab} onSelect={setTab}>
+              Квалификация
+            </RaceTab>
+          </div>
+
+          {tab === 'qualification' ? (
+            <>
+              <div role="tabpanel" aria-label="Квалификация" className="mt-3">
+                <Qualification files={files} onSignedOut={onSignedOut} />
+              </div>
+              {/* Stays in reach when the list is longer than the screen. */}
+              <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+1rem)] mt-auto pt-6">
+                <MainAction onClick={() => picker.current?.click()}>
+                  <Paperclip />
+                  Добавить протоколы
+                </MainAction>
+              </div>
+            </>
+          ) : (
+            <div role="tabpanel" aria-label="Пит-стопы" className="mt-[10dvh] flex flex-col gap-1.5 px-2 text-center">
+              <p className="text-name text-fg-2">Здесь будет экран пит-стопов</p>
+              <p className="text-sm text-fg-3">Он появится на следующем этапе</p>
+            </div>
+          )}
+        </>
+      )}
     </div>
+  )
+}
+
+type RaceTabProps = { id: Tab; current: Tab; onSelect: (tab: Tab) => void; children: ReactNode }
+
+function RaceTab({ id, current, onSelect, children }: RaceTabProps) {
+  const selected = id === current
+
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      onClick={() => onSelect(id)}
+      className={`-mb-px flex h-12 items-center justify-center border-b-2 text-body active:opacity-70 ${
+        selected ? 'border-fg font-semibold text-fg' : 'border-transparent text-fg-3'
+      }`}
+    >
+      {children}
+    </button>
   )
 }
