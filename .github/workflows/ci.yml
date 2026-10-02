@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [ main ]
+  # The deploy runs the same checks first (deploy.yml).
+  workflow_call:
 
 jobs:
   scan_ruby:
@@ -88,3 +90,56 @@ jobs:
           # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
           # REDIS_URL: redis://localhost:6379/0
         run: bin/rails db:prepare test
+
+  # The React app: its linter, then the end-to-end tests that run the built app offline in
+  # Chromium against Rails, as bin/ci does.
+  frontend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432
+
+    steps:
+      - name: Install packages
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y libpq-dev libvips
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Lint frontend
+        run: npm --prefix frontend run lint
+
+      - name: Install Chromium
+        run: npm --prefix frontend exec -- playwright install --with-deps chromium
+
+      - name: Prepare database
+        run: bin/rails db:prepare
+
+      - name: Run end-to-end tests
+        run: npm --prefix frontend run e2e
