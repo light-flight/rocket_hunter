@@ -156,17 +156,20 @@ function Then() {
 
 // Apple moved Share twice: it sat in the toolbar up to Safari 18, behind the dots in 26 and
 // behind the page menu in 27. The row to tap in the share sheet was renamed in 26, where it
-// also gained a switch that has to stay on, or the icon becomes a bookmark.
-function IphoneSteps({ safari }: { safari: number }) {
-  const renamed = safari >= 26
+// also gained a switch that has to stay on, or the icon becomes a bookmark. Another browser
+// (safari is null) does not tell the version of the system: it gets the words common to all.
+function IphoneSteps({ safari }: { safari: number | null }) {
+  const renamed = safari !== null && safari >= 26
+  const where =
+    safari === null ? 'в меню браузера' : safari >= 27 ? 'слева от адресной строки' : 'в панели Safari'
 
   return (
     <Steps>
-      <Step number={1} hint={safari >= 27 ? 'слева от адресной строки' : 'в панели Safari'}>
+      <Step number={1} hint={where}>
         {renamed && (
           <>
             <Cap>
-              {safari >= 27 ? (
+              {safari !== null && safari >= 27 ? (
                 <Glyph name="Меню страницы">
                   <PageMenuGlyph />
                 </Glyph>

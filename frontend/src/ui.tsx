@@ -7,23 +7,29 @@ type MainActionProps = {
   href?: string
   newTab?: boolean
   children: ReactNode
-} & Pick<ComponentProps<'button'>, 'onClick' | 'disabled'>
+  onClick?: () => void
+} & Pick<ComponentProps<'button'>, 'disabled'>
 
 // The one main action of a screen.
-export function MainAction({ href, newTab = false, children, ...rest }: MainActionProps) {
+export function MainAction({ href, newTab = false, children, onClick, disabled }: MainActionProps) {
   const className =
     'flex h-15 w-full shrink-0 items-center justify-center gap-2.5 rounded-lg bg-action px-4 text-key ' +
     'font-semibold tracking-key text-on-action uppercase shadow-key active:opacity-70 disabled:opacity-50'
 
   if (href !== undefined) {
     return (
-      <a href={href} {...(newTab && { target: '_blank', rel: 'noopener' })} className={className}>
+      <a
+        href={href}
+        {...(newTab && { target: '_blank', rel: 'noopener' })}
+        onClick={onClick}
+        className={className}
+      >
         {children}
       </a>
     )
   }
   return (
-    <button type="button" className={className} {...rest}>
+    <button type="button" className={className} onClick={onClick} disabled={disabled}>
       {children}
     </button>
   )

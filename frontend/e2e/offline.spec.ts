@@ -1,10 +1,14 @@
 import { type APIRequestContext, type BrowserContext, expect, type Page, test } from '@playwright/test'
 
-// Does what the manager does in Telegram, through the real webhook: opens the bot with the
-// link from the app, then presses «Войти». The sender is the manager "one" from the fixtures;
+// Does what the manager does in Telegram, through the real webhook: taps the link in the app,
+// which opens the bot, then presses «Войти». The sender is the manager "one" from the fixtures;
 // the secret is the one config/environments/test.rb sets.
 async function confirmInTelegram(page: Page, request: APIRequestContext) {
-  const href = await page.getByRole('link', { name: 'Открыть Telegram' }).getAttribute('href')
+  const link = page.getByRole('link', { name: 'Войти через Telegram' })
+  const href = await link.getAttribute('href')
+  // Telegram itself stays out of the test.
+  await page.context().route('https://t.me/**', (route) => route.fulfill({ body: '' }))
+  await link.click()
   expect(href).toMatch(/^https:\/\/t\.me\/\w+\?start=\w+$/)
   const token = new URL(href!).searchParams.get('start')
   const headers = { 'X-Telegram-Bot-Api-Secret-Token': 'test' }
@@ -41,13 +45,12 @@ async function asInstalled(context: BrowserContext) {
 
 test('signs in, then opens and stays usable without a network', async ({ page, context, request }) => {
   await asInstalled(context)
-  const signInButton = page.getByRole('button', { name: 'Войти через Telegram' })
+  const signInButton = page.getByRole('link', { name: 'Войти через Telegram' })
   const currentUser = page.getByTestId('current-user')
   const sessionExpired = page.getByTestId('session-expired')
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Rocket Hunter' })).toBeVisible()
-  await signInButton.click()
   await confirmInTelegram(page, request)
 
   // Nothing is clicked here: the app notices the confirmation by itself, within one poll.
@@ -80,7 +83,6 @@ test('signs in, then opens and stays usable without a network', async ({ page, c
   await expect(sessionExpired).toBeVisible()
   await expect(currentUser).toBeVisible()
 
-  await sessionExpired.getByRole('button', { name: 'Войти через Telegram' }).click()
   await confirmInTelegram(page, request)
   await expect(sessionExpired).toHaveCount(0, { timeout: 10_000 })
   await expect(currentUser).toBeVisible()
@@ -116,13 +118,13 @@ test('server paths are answered by Rails, not by the cached app shell', async ({
 })
 
 test.describe('in a browser on a phone, before the app is installed', () => {
-  const signInButton = { name: 'Войти через Telegram' }
+  const signIn = 'Войти через Telegram'
 
   test('Android offers to install, by a key or by steps, and no sign-in', async ({ page }) => {
     await page.goto('/')
 
     await expect(page.getByRole('heading', { name: 'Установите приложение' })).toBeVisible()
-    await expect(page.getByRole('button', signInButton)).toHaveCount(0)
+    await expect(page.getByText(signIn)).toHaveCount(0)
   })
 
   test('inside Telegram on Android the way out is a link that opens Chrome', async ({ page, context }) => {
@@ -133,7 +135,7 @@ test.describe('in a browser on a phone, before the app is installed', () => {
       'href',
       'intent://localhost:3100/#Intent;scheme=https;package=com.android.chrome;end',
     )
-    await expect(page.getByRole('button', signInButton)).toHaveCount(0)
+    await expect(page.getByText(signIn)).toHaveCount(0)
   })
 
   test.describe('Safari 26 on iPhone', () => {
@@ -151,7 +153,7 @@ test.describe('in a browser on a phone, before the app is installed', () => {
         /Добавить.*переключатель/,
         /Rocket\sHunter.*на экране «Домой»/,
       ])
-      await expect(page.getByRole('button', signInButton)).toHaveCount(0)
+      await expect(page.getByText(signIn)).toHaveCount(0)
     })
 
     test('inside Telegram the way out is a link that opens Safari', async ({ page, context }) => {
@@ -162,6 +164,25 @@ test.describe('in a browser on a phone, before the app is installed', () => {
         'href',
         'x-safari-https://localhost:3100/',
       )
+    })
+  })
+
+  test.describe('Chrome on iPhone', () => {
+    test.use({
+      userAgent:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.7390.41 Mobile/15E148 Safari/604.1',
+    })
+
+    test('shows the steps at once, without sending to Safari', async ({ page }) => {
+      await page.goto('/')
+
+      await expect(page.getByRole('listitem')).toHaveText([
+        /Поделиться.*в меню браузера/,
+        /На экран «Домой»/,
+        /Добавить/,
+        /Rocket\sHunter.*на экране «Домой»/,
+      ])
+      await expect(page.getByRole('link', { name: 'Открыть в Safari' })).toHaveCount(0)
     })
   })
 })

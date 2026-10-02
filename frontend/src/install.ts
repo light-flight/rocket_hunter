@@ -25,8 +25,9 @@ export type Situation =
   // Nothing to install: the app is installed, or this is a computer.
   | { step: 'none' }
   | Leave
-  // Safari on iPhone installs by hand; the steps depend on its version.
-  | { step: 'iphone'; safari: number }
+  // An iPhone installs by hand. The steps depend on the version of Safari; null is another
+  // browser, which installs through the same share sheet.
+  | { step: 'iphone'; safari: number | null }
   // A browser on Android may offer to install; if it does not, Chrome can.
   | { step: 'android'; chrome: boolean; toChrome: Leave }
 
@@ -39,12 +40,12 @@ export function situation(): Situation {
   const address = `${location.host}${location.pathname}${location.search}`
 
   if (/iPhone|iPod/.test(agent)) {
-    // Safari's user agent ends exactly so; every other browser on iPhone adds a word of its own.
-    const safari = !fromTelegram && /Version\/[\d.]+ Mobile\/\w+ Safari\/[\d.]+$/.test(agent)
-    // Since Safari 26 the system version in the user agent is frozen; Version/ is not.
-    if (safari) return { step: 'iphone', safari: Number(/Version\/(\d+)/.exec(agent)?.[1]) }
+    if (fromTelegram) return { step: 'leave', to: 'Safari', href: `x-safari-https://${address}`, fromTelegram }
 
-    return { step: 'leave', to: 'Safari', href: `x-safari-https://${address}`, fromTelegram }
+    // Safari's user agent ends exactly so; every other browser on iPhone adds a word of its own.
+    // Since Safari 26 the system version in the user agent is frozen; Version/ is not.
+    const safari = /Version\/(\d+)[\d.]* Mobile\/\w+ Safari\/[\d.]+$/.exec(agent)
+    return { step: 'iphone', safari: safari && Number(safari[1]) }
   }
 
   if (/Android/.test(agent)) {
