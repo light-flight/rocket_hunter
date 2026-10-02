@@ -54,6 +54,10 @@ Rails.application.configure do
   # Fixed value: the end-to-end tests confirm sign-ins by posting bot updates to /telegram/webhook.
   config.x.telegram.webhook_secret = "test"
 
+  # The end-to-end run (frontend/playwright.config.ts) serves the app from this environment and
+  # needs its jobs done there and then; the tests themselves only look at what was enqueued.
+  config.active_job.queue_adapter = :async if ENV["E2E"]
+
   # Qualification protocols are read without calling the model, whatever key the machine has.
   config.x.qualification.reader = "QualificationReader::Canned"
   config.x.qualification.api_key = nil

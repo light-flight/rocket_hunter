@@ -2,6 +2,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api.ts'
 import { db, type Race } from './db.ts'
+import { newId } from './id.ts'
+import { syncFiles } from './qualification.ts'
 
 export type { Race }
 
@@ -31,18 +33,6 @@ export function useRaces(): Race[] | null | undefined {
       .toArray()
       .catch(() => null),
   )
-}
-
-// crypto.randomUUID exists only in a secure context, and a phone that opens the app by its
-// LAN address over plain http is not one.
-function newId(): string {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-  bytes[6] = (bytes[6] & 0x0f) | 0x40
-  bytes[8] = (bytes[8] & 0x3f) | 0x80
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
 export async function createRace(name: string, lanes: number): Promise<string> {
@@ -94,7 +84,7 @@ async function exchange(onSignedOut: () => void): Promise<void> {
   if (!Array.isArray(body?.races) || !body.races.every(isServerRace)) return
   const team = body.races
 
-  await db.transaction('rw', db.races, async () => {
+  await db.transaction('rw', db.races, db.files, db.uploads, async () => {
     const here = new Map((await db.races.toArray()).map((race) => [race.id, race]))
     const there = new Set(team.map((race) => race.id))
 
@@ -110,10 +100,12 @@ async function exchange(onSignedOut: () => void): Promise<void> {
           pending: 0 as const,
         })),
     )
-    // Removed on the server. A race that has never reached it is not among them.
-    await db.races.bulkDelete(
-      [...here.values()].filter((race) => race.pending === 0 && !there.has(race.id)).map((race) => race.id),
-    )
+    // Removed on the server, with its files. A race that has never reached it is not among them.
+    const removed = [...here.values()].filter((race) => race.pending === 0 && !there.has(race.id)).map((race) => race.id)
+    await db.races.bulkDelete(removed)
+    const files = await db.files.where('raceId').anyOf(removed).primaryKeys()
+    await db.files.bulkDelete(files)
+    await db.uploads.bulkDelete(files)
   })
 }
 
@@ -138,6 +130,8 @@ function syncRaces(onSignedOut: () => void): Promise<void> {
         again = false
         await exchange(onSignedOut)
       } while (again)
+      // The files go after the races they belong to, on their own: they may take a while.
+      void syncFiles(onSignedOut)
     } catch {
       // The database or the network failed halfway: the next exchange starts over.
     } finally {
@@ -165,7 +159,9 @@ export function useRaceSync(onSignedOut: () => void, expired: boolean) {
   useEffect(() => {
     const timer = window.setInterval(async () => {
       if (document.visibilityState !== 'visible') return
-      if ((await db.races.where('pending').equals(1).count().catch(() => 0)) > 0) sync()
+      const races = await db.races.where('pending').equals(1).count().catch(() => 0)
+      const files = await db.files.where('pending').equals(1).count().catch(() => 0)
+      if (races + files > 0) sync()
     }, RETRY_MS)
     return () => clearInterval(timer)
   }, [sync])

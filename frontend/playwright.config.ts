@@ -12,7 +12,7 @@ export default defineConfig({
     // The fixtures give the tests a manager to sign in as: bin/ci empties the test database
     // (db:seed:replant) right before this step.
     command:
-      'npm run build:rails && cd .. && RAILS_ENV=test bin/rails db:fixtures:load && bin/rails server -e test -b localhost -p 3100 --pid tmp/pids/e2e.pid',
+      'npm run build:rails && cd .. && RAILS_ENV=test bin/rails db:fixtures:load && E2E=1 bin/rails server -e test -b localhost -p 3100 --pid tmp/pids/e2e.pid',
     url: 'http://localhost:3100/up',
     reuseExistingServer: false,
     // Lets Puma exit cleanly and remove its pid file instead of being killed.

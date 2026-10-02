@@ -164,3 +164,40 @@ export function TelegramMark() {
     </svg>
   )
 }
+
+// A paperclip: files are attached.
+export function Paperclip() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-5 stroke-[2.2] ${ICON}`}>
+      <path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+    </svg>
+  )
+}
+
+export function Check() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 stroke-2 ${ICON}`}>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  )
+}
+
+// Work going on elsewhere: a quarter of a ring that turns.
+export function Spinner() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 animate-spin stroke-2 ${ICON}`}>
+      <circle cx="12" cy="12" r="8" strokeOpacity={0.3} />
+      <path d="M12 4a8 8 0 0 1 8 8" />
+    </svg>
+  )
+}
+
+// Something the manager should look at: a triangle with an exclamation mark.
+export function Attention() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 stroke-[1.8] ${ICON}`}>
+      <path d="M10.3 4.2L2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z" />
+      <path d="M12 9.5v4M12 17v.01" />
+    </svg>
+  )
+}

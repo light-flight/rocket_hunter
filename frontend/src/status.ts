@@ -24,3 +24,21 @@ export function isInstalled(): boolean {
     (navigator as Navigator & { standalone?: boolean }).standalone === true
   )
 }
+
+// Whether the phone thinks it has a network. It can be wrong the other way: a phone in the pits
+// may be "online" with nothing getting through.
+export function useOnline(): boolean {
+  const [online, setOnline] = useState(() => navigator.onLine)
+
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine)
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+    return () => {
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
+  }, [])
+
+  return online
+}
