@@ -1,5 +1,81 @@
-<!-- Placeholder icon; the real one comes with the design stage. -->
+<!-- App icon in the colours of a karting glove: pink print on the black grip tiles of the palm. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#0b0f14"/>
-  <text x="256" y="318" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="190" font-weight="700" fill="#ffffff">RH</text>
+  <defs>
+    <g id="rh">
+      <polygon points="62,120 124,120 164,200 100,200"/>
+      <rect width="54" height="200"/>
+      <path fill-rule="evenodd" d="M0 0H96A64 64 0 0 1 96 128H0Z M54 44H94A20 20 0 0 1 94 84H54Z"/>
+      <rect x="186" width="54" height="200"/>
+      <rect x="292" width="54" height="200"/>
+      <rect x="186" y="78" width="160" height="44"/>
+    </g>
+  </defs>
+  <rect width="512" height="512" fill="#060607"/>
+  <g stroke="#060607" stroke-width="7" stroke-linejoin="round">
+    <polygon points="-62,569 -49,582 8,534 -7,509" fill="#17171a"/>
+    <polygon points="-58,479 -36,493 16,424 -31,406" fill="#141417"/>
+    <polygon points="-36,493 -7,509 47,437 16,424" fill="#1b1b1f"/>
+    <polygon points="-7,509 8,534 47,437" fill="#202024"/>
+    <polygon points="8,534 71,477 47,437" fill="#202024"/>
+    <polygon points="8,534 36,556 100,504 71,477" fill="#141417"/>
+    <polygon points="36,556 36,579 111,541 100,504" fill="#141417"/>
+    <polygon points="-75,391 -31,406 15,325 -38,291" fill="#141417"/>
+    <polygon points="-31,406 16,424 56,339 15,325" fill="#202024"/>
+    <polygon points="16,424 47,437 56,339" fill="#1b1b1f"/>
+    <polygon points="47,437 98,363 56,339" fill="#1b1b1f"/>
+    <polygon points="47,437 71,477 98,363" fill="#17171a"/>
+    <polygon points="71,477 153,415 98,363" fill="#17171a"/>
+    <polygon points="71,477 100,504 180,464 153,415" fill="#202024"/>
+    <polygon points="100,504 111,541 180,464" fill="#1b1b1f"/>
+    <polygon points="111,541 192,493 180,464" fill="#17171a"/>
+    <polygon points="111,541 132,578 227,564 192,493" fill="#1b1b1f"/>
+    <polygon points="-38,291 15,325 50,216 -25,199" fill="#1b1b1f"/>
+    <polygon points="15,325 56,339 107,252" fill="#17171a"/>
+    <polygon points="15,325 107,252 50,216" fill="#1b1b1f"/>
+    <polygon points="56,339 98,363 160,285 107,252" fill="#17171a"/>
+    <polygon points="98,363 153,415 209,345 160,285" fill="#202024"/>
+    <polygon points="153,415 180,464 260,393 209,345" fill="#141417"/>
+    <polygon points="180,464 192,493 296,480" fill="#1b1b1f"/>
+    <polygon points="180,464 296,480 260,393" fill="#141417"/>
+    <polygon points="192,493 227,564 313,547 296,480" fill="#141417"/>
+    <polygon points="-87,183 -25,199 16,90" fill="#202024"/>
+    <polygon points="-87,183 16,90 -90,99" fill="#1b1b1f"/>
+    <polygon points="-25,199 50,216 95,144 16,90" fill="#1b1b1f"/>
+    <polygon points="50,216 107,252 176,185 95,144" fill="#202024"/>
+    <polygon points="107,252 160,285 243,216 176,185" fill="#17171a"/>
+    <polygon points="160,285 209,345 298,270 243,216" fill="#1b1b1f"/>
+    <polygon points="209,345 260,393 326,336 298,270" fill="#1b1b1f"/>
+    <polygon points="260,393 296,480 396,420 326,336" fill="#1b1b1f"/>
+    <polygon points="296,480 313,547 414,522" fill="#202024"/>
+    <polygon points="296,480 414,522 396,420" fill="#202024"/>
+    <polygon points="-90,99 16,90 -62,-26" fill="#141417"/>
+    <polygon points="16,90 60,10 -62,-26" fill="#202024"/>
+    <polygon points="16,90 95,144 147,28 60,10" fill="#141417"/>
+    <polygon points="95,144 176,185 236,80 147,28" fill="#141417"/>
+    <polygon points="176,185 243,216 236,80" fill="#141417"/>
+    <polygon points="243,216 325,134 236,80" fill="#1b1b1f"/>
+    <polygon points="243,216 298,270 379,207" fill="#17171a"/>
+    <polygon points="243,216 379,207 325,134" fill="#17171a"/>
+    <polygon points="298,270 326,336 436,275 379,207" fill="#17171a"/>
+    <polygon points="326,336 396,420 436,275" fill="#202024"/>
+    <polygon points="396,420 479,386 436,275" fill="#17171a"/>
+    <polygon points="396,420 414,522 534,495 479,386" fill="#17171a"/>
+    <polygon points="414,522 420,584 548,597 534,495" fill="#1b1b1f"/>
+    <polygon points="-62,-26 60,10 89,-108" fill="#141417"/>
+    <polygon points="60,10 147,28 191,-113 89,-108" fill="#202024"/>
+    <polygon points="147,28 236,80 278,-26" fill="#202024"/>
+    <polygon points="147,28 278,-26 191,-113" fill="#202024"/>
+    <polygon points="236,80 325,134 369,72 278,-26" fill="#17171a"/>
+    <polygon points="325,134 379,207 479,128 369,72" fill="#202024"/>
+    <polygon points="379,207 436,275 566,221 479,128" fill="#1b1b1f"/>
+    <polygon points="436,275 479,386 611,326 566,221" fill="#17171a"/>
+    <polygon points="479,386 534,495 611,326" fill="#1b1b1f"/>
+    <polygon points="278,-26 369,72 494,-81 394,-161" fill="#202024"/>
+    <polygon points="369,72 479,128 572,6" fill="#202024"/>
+    <polygon points="369,72 572,6 494,-81" fill="#17171a"/>
+    <polygon points="479,128 566,221 689,119 572,6" fill="#202024"/>
+  </g>
+  <!-- A dark outline keeps the grooves between the tiles from touching the letters. -->
+  <use href="#rh" fill="#060607" stroke="#060607" stroke-width="20" stroke-linejoin="round" transform="translate(256 256) skewX(-10) scale(1.05) translate(-173 -100)"/>
+  <use href="#rh" fill="#f0127a" transform="translate(256 256) skewX(-10) scale(1.05) translate(-173 -100)"/>
 </svg>
