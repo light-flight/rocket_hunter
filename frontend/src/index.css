@@ -12,6 +12,8 @@
   --color-fg-2: #c2c2ca;
   /* Small print only: too dim for anything a person must read to get on. */
   --color-fg-3: #9494a0;
+  /* A picture of a choice not taken: there, but out of the way. Never text. */
+  --color-fg-off: #4f4f58;
   /* A field to type in, a shade above the ground. */
   --color-field: #0c0c0e;
   /* A sheet raised over the screen. */

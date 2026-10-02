@@ -11,4 +11,11 @@ class RaceTest < ActiveSupport::TestCase
     assert_not Race.new(name: "а" * 101).valid?
     assert Race.new(name: "а" * 100).valid?
   end
+
+  test "has one corridor unless told otherwise, and never more than three" do
+    assert_equal 1, Race.new.lanes
+    assert_not Race.new(name: "Этап 1", lanes: 0).valid?
+    assert_not Race.new(name: "Этап 1", lanes: 4).valid?
+    assert Race.new(name: "Этап 1", lanes: 3).valid?
+  end
 end

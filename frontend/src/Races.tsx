@@ -1,8 +1,18 @@
 import { type FormEvent, type ReactNode, useState } from 'react'
 import type { Auth, User } from './auth.ts'
 import { Masthead, Palm } from './glove.tsx'
+import { LanesPicker } from './Lanes.tsx'
 import { Menu } from './Menu.tsx'
-import { cleanName, createRace, NAME_LIMIT, type Race, renameRace, useRaces, useRaceSync } from './races.ts'
+import {
+  cleanName,
+  createRace,
+  lanesLabel,
+  NAME_LIMIT,
+  type Race,
+  updateRace,
+  useRaces,
+  useRaceSync,
+} from './races.ts'
 import { StorageTrouble } from './Trouble.tsx'
 import { ActionArea, BackLink, ChevronRight, MainAction, NotSent, Plus, TextField } from './ui.tsx'
 
@@ -28,7 +38,7 @@ function storeSelection(id: string) {
   }
 }
 
-type Screen = 'race' | 'list' | 'new' | 'rename'
+type Screen = 'race' | 'list' | 'new' | 'edit'
 
 type RacesProps = { user: User; auth: Auth }
 
@@ -46,14 +56,14 @@ export function Races({ user, auth }: RacesProps) {
     setScreen('race')
   }
 
-  async function create(name: string) {
-    open(await createRace(name))
+  async function create(name: string, lanes: number) {
+    open(await createRace(name, lanes))
     sync()
   }
 
-  async function rename(name: string) {
+  async function edit(name: string, lanes: number) {
     if (!selected) return
-    await renameRace(selected.id, name)
+    await updateRace(selected.id, name, lanes)
     setScreen('race')
     sync()
   }
@@ -74,21 +84,19 @@ export function Races({ user, auth }: RacesProps) {
       />
     )
   }
-  if (screen === 'rename' && selected) {
+  if (screen === 'edit' && selected) {
     return (
       <RaceForm
-        title="Переименовать гонку"
+        title="Изменить гонку"
         action="Сохранить"
-        initial={selected.name}
-        onSubmit={rename}
+        initial={selected}
+        onSubmit={edit}
         onCancel={() => setScreen('race')}
       />
     )
   }
   if (screen === 'race' && selected) {
-    return (
-      <RaceScreen race={selected} onBack={() => setScreen('list')} onRename={() => setScreen('rename')} />
-    )
+    return <RaceScreen race={selected} onBack={() => setScreen('list')} onEdit={() => setScreen('edit')} />
   }
   return (
     <RaceList
@@ -102,18 +110,20 @@ export function Races({ user, auth }: RacesProps) {
   )
 }
 
-type NameFormProps = {
-  initial?: string
+type RaceFieldsProps = {
+  initial?: Pick<Race, 'name' | 'lanes'>
   action: string
   // Not on the first screen: the keyboard would cover the greeting.
   autoFocus?: boolean
-  onSubmit: (name: string) => Promise<void>
-  children: (field: ReactNode) => ReactNode
+  onSubmit: (name: string, lanes: number) => Promise<void>
+  children: (field: ReactNode, lanes: ReactNode) => ReactNode
 }
 
-// The name of a race and the key that saves it. The return key of the keyboard saves it too.
-function NameForm({ initial = '', action, autoFocus = false, onSubmit, children }: NameFormProps) {
-  const [name, setName] = useState(initial)
+// The name of a race, its corridors and the key that saves them. The return key of the
+// keyboard saves them too.
+function RaceFields({ initial, action, autoFocus = false, onSubmit, children }: RaceFieldsProps) {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [lanes, setLanes] = useState(initial?.lanes ?? 1)
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
   const ready = cleanName(name) !== '' && !saving
@@ -125,7 +135,7 @@ function NameForm({ initial = '', action, autoFocus = false, onSubmit, children 
     setSaving(true)
     setFailed(false)
     try {
-      await onSubmit(name)
+      await onSubmit(name, lanes)
     } catch {
       setFailed(true)
       setSaving(false)
@@ -148,7 +158,7 @@ function NameForm({ initial = '', action, autoFocus = false, onSubmit, children 
 
   return (
     <form onSubmit={submit} className="flex flex-1 flex-col">
-      {children(field)}
+      {children(field, <LanesPicker value={lanes} onChange={setLanes} />)}
       <ActionArea>
         {failed && (
           <p role="alert" className="text-center text-sm text-amber-400">
@@ -163,7 +173,7 @@ function NameForm({ initial = '', action, autoFocus = false, onSubmit, children 
   )
 }
 
-type FirstRaceProps = { waiting: boolean; onCreate: (name: string) => Promise<void> }
+type FirstRaceProps = { waiting: boolean; onCreate: (name: string, lanes: number) => Promise<void> }
 
 // The first screen of a phone that has no races: the app greets the manager and asks for one.
 function FirstRace({ waiting, onCreate }: FirstRaceProps) {
@@ -177,8 +187,8 @@ function FirstRace({ waiting, onCreate }: FirstRaceProps) {
   }
 
   return (
-    <NameForm action="Создать гонку" onSubmit={onCreate}>
-      {(field) => (
+    <RaceFields action="Создать гонку" onSubmit={onCreate}>
+      {(field, lanes) => (
         <>
           <Palm size="low" />
           <Masthead raised />
@@ -187,32 +197,35 @@ function FirstRace({ waiting, onCreate }: FirstRaceProps) {
             <p className="text-body text-fg-2">Назовите гонку этого уикенда — дальше вся работа идёт внутри неё.</p>
           </div>
           <div className="mt-6">{field}</div>
+          <div className="mt-5">{lanes}</div>
         </>
       )}
-    </NameForm>
+    </RaceFields>
   )
 }
 
 type RaceFormProps = {
   title: string
   action: string
-  initial?: string
-  onSubmit: (name: string) => Promise<void>
+  initial?: Pick<Race, 'name' | 'lanes'>
+  onSubmit: (name: string, lanes: number) => Promise<void>
   onCancel: () => void
 }
 
-// A new race or a new name for one. Nothing but the field: the keyboard takes half the screen.
+// A new race, or a change to one. Nothing but the fields: the keyboard takes half the screen,
+// and the corridors stay above it.
 function RaceForm({ title, action, initial, onSubmit, onCancel }: RaceFormProps) {
   return (
-    <NameForm initial={initial} action={action} autoFocus onSubmit={onSubmit}>
-      {(field) => (
+    <RaceFields initial={initial} action={action} autoFocus onSubmit={onSubmit}>
+      {(field, lanes) => (
         <>
           <BackLink onClick={onCancel}>Отмена</BackLink>
           <h1 className="mt-2 text-title font-bold">{title}</h1>
           <div className="mt-5">{field}</div>
+          <div className="mt-5">{lanes}</div>
         </>
       )}
-    </NameForm>
+    </RaceFields>
   )
 }
 
@@ -299,10 +312,10 @@ function RaceList({ races, selectedId, onOpen, onNew, user, auth }: RaceListProp
   )
 }
 
-type RaceScreenProps = { race: Race; onBack: () => void; onRename: () => void }
+type RaceScreenProps = { race: Race; onBack: () => void; onEdit: () => void }
 
-// Inside a race. For now only its name: the pit screen comes at the next stage.
-function RaceScreen({ race, onBack, onRename }: RaceScreenProps) {
+// Inside a race. For now only its name and corridors: the pit screen comes at a later stage.
+function RaceScreen({ race, onBack, onEdit }: RaceScreenProps) {
   return (
     <div className="flex flex-1 flex-col">
       <Palm />
@@ -310,13 +323,16 @@ function RaceScreen({ race, onBack, onRename }: RaceScreenProps) {
         Все гонки
       </BackLink>
       <h1 className="mt-2 text-title font-bold break-words">{race.name}</h1>
-      <button
-        type="button"
-        onClick={onRename}
-        className="flex h-11 items-center self-start text-sm text-fg-3 underline underline-offset-3 active:opacity-70"
-      >
-        Переименовать
-      </button>
+      <div className="flex items-center gap-3.5 text-sm text-fg-3">
+        <span data-testid="race-lanes">{lanesLabel(race.lanes)}</span>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex h-11 items-center px-1 underline underline-offset-3 active:opacity-70"
+        >
+          Изменить
+        </button>
+      </div>
       <div className="mt-[14dvh] flex flex-col gap-1.5 px-2 text-center text-balance">
         <p className="text-name text-fg-2">Здесь будет экран пит-стопов</p>
         <p className="text-sm text-fg-3">Машины и коридоры появятся на следующем этапе</p>

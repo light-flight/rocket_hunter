@@ -25,19 +25,19 @@ class Api::RacesControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :ok
     assert_equal [ newer.id, ID ], response.parsed_body["races"].pluck("id")
-    assert_equal({ "id" => ID, "name" => "Этап 1", "created_at" => Race.find(ID).created_at.iso8601(3) },
+    assert_equal({ "id" => ID, "name" => "Этап 1", "lanes" => 1, "created_at" => Race.find(ID).created_at.iso8601(3) },
       response.parsed_body["races"].last)
   end
 
   test "update creates the race under the id the phone made" do
     assert_difference "Race.count", 1 do
-      put api_race_url(ID), params: { race: { name: " Этап 1 · Крылатское " } }, as: :json
+      put api_race_url(ID), params: { race: { name: " Этап 1 · Крылатское ", lanes: 2 } }, as: :json
     end
 
     assert_response :created
     assert_equal "Этап 1 · Крылатское", Race.find(ID).name
-    assert_equal({ "id" => ID, "name" => "Этап 1 · Крылатское", "created_at" => Race.find(ID).created_at.iso8601(3) },
-      response.parsed_body)
+    assert_equal({ "id" => ID, "name" => "Этап 1 · Крылатское", "lanes" => 2,
+      "created_at" => Race.find(ID).created_at.iso8601(3) }, response.parsed_body)
   end
 
   test "the same race sent again is not a second race" do
@@ -56,6 +56,24 @@ class Api::RacesControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :ok
     assert_equal "Этап 1 · Москва", Race.find(ID).name
+  end
+
+  test "update changes the corridors, and a phone that sends none leaves them as they are" do
+    Race.create!(id: ID, name: "Этап 1", lanes: 2)
+
+    put api_race_url(ID), params: { race: { name: "Этап 1" } }, as: :json
+    assert_equal 2, Race.find(ID).lanes
+
+    put api_race_url(ID), params: { race: { name: "Этап 1", lanes: 1 } }, as: :json
+    assert_response :ok
+    assert_equal 1, Race.find(ID).lanes
+  end
+
+  test "update refuses corridors out of range" do
+    put api_race_url(ID), params: { race: { name: "Этап 1", lanes: 4 } }, as: :json
+
+    assert_response :unprocessable_content
+    assert_not Race.exists?(ID)
   end
 
   test "a race keeps the time it was made on the phone, but never a time ahead of the server" do
