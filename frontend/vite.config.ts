@@ -3,8 +3,10 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Shown on screen so a manager can tell which version is installed.
-const buildId = `${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`
+// Shown on screen so a manager can tell which version is installed. Comes from the Docker
+// build (builder args in config/deploy.yml): a build-time stamp would change the bundle and
+// sw.js on every deploy and offer phones an update when nothing in the app changed.
+const buildId = process.env.BUILD_ID ?? 'dev'
 
 // https://vite.dev/config/
 export default defineConfig({

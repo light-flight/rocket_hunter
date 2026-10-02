@@ -7,7 +7,7 @@ image: rocket_hunter
 # Deploy to these servers.
 servers:
   web:
-    - 192.168.0.1
+    - 64.188.61.188
   # job:
   #   hosts:
   #     - 192.168.0.1
@@ -20,9 +20,10 @@ servers:
 #
 # Don't use this when deploying to multiple web servers (then you have to terminate SSL at your load balancer).
 #
-# proxy:
-#   ssl: true
-#   host: app.example.com
+proxy:
+  ssl: true
+  # The app's permanent address: phones keep their local data under this origin.
+  host: app.rocket-hunter.ru
 
 # Where you keep your container images.
 registry:
@@ -40,6 +41,7 @@ registry:
 env:
   secret:
     - RAILS_MASTER_KEY
+    - ROCKET_HUNTER_DATABASE_PASSWORD:POSTGRES_PASSWORD
   clear:
     # Run the Solid Queue Supervisor inside the web server's Puma process to do jobs.
     # When you start using multiple servers, you should split out job processing to a dedicated machine.
@@ -53,7 +55,7 @@ env:
 
     # Match this to any external database server to configure Active Record correctly
     # Use rocket_hunter-db for a db accessory server on same machine via local kamal docker network.
-    # DB_HOST: 192.168.0.2
+    DB_HOST: rocket_hunter-db
 
     # Log everything from Rails
     # RAILS_LOG_LEVEL: debug
@@ -76,9 +78,17 @@ volumes:
 # version inside the asset_path.
 asset_path: /rails/public/assets
 
+# A container start boots Rails twice (db:prepare, then Puma) on one shared vCPU;
+# the 30 second default is too tight.
+deploy_timeout: 60
+
 # Configure the image builder.
 builder:
   arch: amd64
+  args:
+    # Last commit that touched frontend/: a server-only deploy keeps the same id, so the
+    # built frontend is identical and phones are not offered an update.
+    BUILD_ID: "<%= `git log -1 --format=%cs-%h -- frontend`.strip %>"
 
   # # Build image via remote server (useful for faster amd64 builds on arm64 computers)
   # remote: ssh://docker@docker-builder-server
@@ -95,7 +105,18 @@ builder:
 #   user: app
 
 # Use accessory services (secrets come from .kamal/secrets).
-# accessories:
+accessories:
+  db:
+    image: postgres:18
+    role: web
+    env:
+      clear:
+        POSTGRES_USER: rocket_hunter
+      secret:
+        - POSTGRES_PASSWORD
+    directories:
+      # postgres:18 keeps its data in /var/lib/postgresql/18/docker: mount the parent directory.
+      - data:/var/lib/postgresql
 #   db:
 #     image: mysql:8.0
 #     host: 192.168.0.2

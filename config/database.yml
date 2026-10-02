@@ -67,6 +67,7 @@ test:
 production:
   primary: &primary_production
     <<: *default
+    host: <%= ENV["DB_HOST"] %>
     database: rocket_hunter_production
     username: rocket_hunter
     password: <%= ENV["ROCKET_HUNTER_DATABASE_PASSWORD"] %>

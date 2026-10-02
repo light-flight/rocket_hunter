@@ -64,6 +64,8 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
 COPY frontend/ ./
+# Build id shown in the app. Kamal passes the last commit that touched frontend/ (config/deploy.yml).
+ARG BUILD_ID=dev
 RUN npm run build
 
 
