@@ -8,6 +8,8 @@ type MainActionProps = {
   newTab?: boolean
   // Sends the form it is in: the return key of the keyboard does the same.
   submit?: boolean
+  // Not the main action of the screen it is on: drawn without the pink.
+  secondary?: boolean
   children: ReactNode
   onClick?: () => void
 } & Pick<ComponentProps<'button'>, 'disabled'>
@@ -17,13 +19,15 @@ export function MainAction({
   href,
   newTab = false,
   submit = false,
+  secondary = false,
   children,
   onClick,
   disabled,
 }: MainActionProps) {
   const className =
-    'flex h-15 w-full shrink-0 items-center justify-center gap-2.5 rounded-lg bg-action px-4 text-key ' +
-    'font-semibold tracking-key text-on-action uppercase shadow-key active:opacity-70 disabled:opacity-50'
+    'flex h-15 w-full shrink-0 items-center justify-center gap-2.5 rounded-lg px-4 text-key font-semibold ' +
+    'tracking-key uppercase active:opacity-70 disabled:opacity-50 ' +
+    (secondary ? 'bg-control text-fg ring-1 ring-line ring-inset' : 'bg-action text-on-action shadow-key')
 
   if (href !== undefined) {
     return (
@@ -52,21 +56,17 @@ function useKeyboardInset(): number {
     const viewport = window.visualViewport
     if (!viewport) return
 
-    // Only while typing: a page zoomed in by a pinch shrinks the visible area too.
+    // Not when zoomed in by a pinch: that shrinks the visible area too. Nor by focus: a tap on
+    // the key moves the focus to it before the click, and the key must not move away then.
     const update = () => {
-      const typing = document.activeElement?.matches('input, textarea') ?? false
       const covered = window.innerHeight - viewport.height - viewport.offsetTop
-      setInset(typing ? Math.max(0, Math.round(covered)) : 0)
+      setInset(viewport.scale > 1.01 ? 0 : Math.max(0, Math.round(covered)))
     }
     viewport.addEventListener('resize', update)
     viewport.addEventListener('scroll', update)
-    document.addEventListener('focusin', update)
-    document.addEventListener('focusout', update)
     return () => {
       viewport.removeEventListener('resize', update)
       viewport.removeEventListener('scroll', update)
-      document.removeEventListener('focusin', update)
-      document.removeEventListener('focusout', update)
     }
   }, [])
 
