@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import type { PitMove } from './pitlane.ts'
 
 // What the phone keeps. Writes are flushed to disk before they count as done: a record must
 // survive the phone being switched off right after it was entered.
@@ -53,9 +54,8 @@ export type Kart = { kart: string; average: number; laps: number; pace: number }
 // The karts of a race, fastest first, as the server last sent them.
 export type Ranking = { raceId: string; karts: Kart[] }
 
-// One thing done in the pits: a kart dropped into a corridor, or an unknown kart (null) put there
-// by hand before the race.
-export type PitMove = { lane: number; kart: string | null }
+// One thing done in the pits: a team that came into a corridor, or a spare kart (pitlane.ts).
+export type { PitMove }
 
 // Everything done in the pits of a race, in order. count is how much of it stands: undoing moves
 // it back, and the moves after it can be done again until something new is done.
@@ -65,6 +65,10 @@ export type PitLog = {
   count: number
   // 1 while a change made on this phone has not reached the server.
   pending: 0 | 1
+  // The log as the server last had it, with its version there: the changes made on this phone
+  // since are made on top of it, and the server takes them only from that version. null until
+  // this phone has had the server's log.
+  server: { moves: PitMove[]; count: number; version: number } | null
 }
 
 export const db = new Dexie('rocket-hunter', { chromeTransactionDurability: 'strict' }) as Dexie & {
@@ -110,5 +114,23 @@ db.version(5)
       .toCollection()
       .modify((log: Partial<PitLog>) => {
         log.pending = log.moves?.length ? 1 : 0
+      }),
+  )
+// Logs kept before the server counted its versions: which of its logs they came from is not
+// known, so a change still waiting here is merged with whatever the server has.
+db.version(6)
+  .stores({
+    races: 'id, createdAt, pending',
+    files: 'id, raceId, pending',
+    uploads: 'id',
+    rankings: 'raceId',
+    pits: 'raceId, pending',
+  })
+  .upgrade((tx) =>
+    tx
+      .table('pits')
+      .toCollection()
+      .modify((log: Partial<PitLog>) => {
+        log.server = null
       }),
   )

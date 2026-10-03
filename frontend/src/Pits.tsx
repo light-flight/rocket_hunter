@@ -1,15 +1,19 @@
 import { type PointerEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Kart, Race } from './db.ts'
-import { byNumber, corridors, paceColour, recordMove, redoMove, syncPits, undoMove, usePitLog } from './pits.ts'
-import { ArrowUp, Redo, Undo } from './ui.tsx'
+import { kartOf, paceOf, replay, standing, teamNumber, teams } from './pitlane.ts'
+import { paceColour, recordMove, redoMove, syncPits, undoMove, usePitLog } from './pits.ts'
+import { ArrowUp, Plus, Redo, TextField, Undo } from './ui.tsx'
 
-// The pit screen: the corridors at the top, every kart of the qualification below. A kart that
-// comes into the pits is dragged into its corridor; the one at the front goes back below.
-// Colour tells the pace: purple the fastest, grey the middle, brown the slowest.
+// The pit screen. A team's number is always on the track: a team that comes in joins the end of
+// a corridor, its driver gets into the kart at the front, and the number is moved onto it. So the
+// corridors at the top hold karts, each named by the team that left it there, or ? for a spare
+// nobody has taken yet. Below are all the teams, each on the kart it took last; a team that comes
+// in is dragged into its corridor. Colour tells a kart's pace: purple the fastest, grey the
+// middle, brown the slowest. A kart nobody knows the pace of has no colour and a dashed edge.
 
 type PitsProps = { race: Race; karts: Kart[]; onQualification: () => void; onSignedOut: () => void }
 
-type Drag = { kart: string; pointer: number; x: number; y: number; width: number; height: number; over: number }
+type Drag = { team: string; pointer: number; x: number; y: number; width: number; height: number; over: number }
 type Menu = { lane: number; x: number; y: number }
 
 // How long a press on a corridor takes to open its menu, and how far the finger may wander.
@@ -18,10 +22,28 @@ const PRESS_SLOP = 10
 // How often the moves made on the other phones are asked for while the pits are on screen.
 const POLL_MS = 10_000
 
+// A kart of a known pace has its colour and a thin light edge: dark ones would melt into the
+// ground otherwise. One nobody knows the pace of has the fill of a control and a dashed edge, and
+// a ? in the corner when the tile shows a number. The ? is drawn by CSS, so the tile's text stays
+// the number. In a corridor it keeps clear of the round top corner; the small tiles of the teams
+// wear it on their corner, clear of the number.
+const KNOWN = 'ring-1 ring-white/8 ring-inset'
+const UNKNOWN = 'bg-control outline-1 -outline-offset-1 outline-dashed outline-fg-off'
+const QUESTION =
+  `${UNKNOWN} after:absolute after:flex after:size-4 after:items-center after:justify-center after:rounded-full ` +
+  "after:bg-line after:text-[0.6875rem]/none after:font-bold after:text-fg-2 after:content-['?']"
+const UNKNOWN_KART = `${QUESTION} after:top-3 after:right-3`
+const UNKNOWN_TEAM = `${QUESTION} after:-top-1.5 after:-right-1.5 after:ring-2 after:ring-ground`
+
+function fill(pace: number | undefined): string | undefined {
+  return pace === undefined ? undefined : paceColour(pace)
+}
+
 export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
   const log = usePitLog(race.id)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [menu, setMenu] = useState<Menu | null>(null)
+  const [other, setOther] = useState(false)
   const lanes = useRef<(HTMLDivElement | null)[]>([])
   const press = useRef<{ pointer: number; x: number; y: number; timer: number } | null>(null)
   // The finger that opened the menu is still down: lifting it must not count as a tap outside.
@@ -64,15 +86,16 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
     )
   }
 
-  const queues = corridors(log, race.lanes)
+  const moves = standing(log)
+  const pitlane = replay(moves)
   const pace = new Map(karts.map((kart) => [kart.kart, kart.pace]))
-  const inPits = new Set(queues.flat())
-  const free = karts
-    .map((kart) => kart.kart)
-    .filter((kart) => !inPits.has(kart))
-    .sort(byNumber)
-  // Every kart in sight at once: more karts, more columns and lower tiles.
-  const columns = free.length <= 15 ? 5 : free.length <= 24 ? 6 : 7
+  const all = teams(karts.map((kart) => kart.kart), moves)
+  // The pace of the kart a team is on the track with.
+  const riding = (team: string) => paceOf(kartOf(pitlane.riding, team), pace)
+  // Every team in sight at once, and the key for another number after them: more tiles, more
+  // columns and lower tiles.
+  const tiles = all.length + 1
+  const columns = tiles <= 15 ? 5 : tiles <= 24 ? 6 : 7
   const tile = { 5: 'h-15.5 text-[1.875rem]', 6: 'h-13 text-[1.625rem]', 7: 'h-11.5 text-[1.375rem]' }[columns]
 
   function laneAt(x: number, y: number): number {
@@ -88,12 +111,12 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
     void syncPits(onSignedOut)
   }
 
-  function startDrag(event: PointerEvent<HTMLButtonElement>, kart: string) {
+  function startDrag(event: PointerEvent<HTMLButtonElement>, team: string) {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     const box = event.currentTarget.getBoundingClientRect()
     event.currentTarget.setPointerCapture(event.pointerId)
     setDrag({
-      kart,
+      team,
       pointer: event.pointerId,
       x: event.clientX,
       y: event.clientY,
@@ -112,7 +135,7 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
     if (drag?.pointer !== event.pointerId) return
     const lane = laneAt(event.clientX, event.clientY)
     setDrag(null)
-    if (lane >= 0) await change(() => recordMove(race.id, { lane, kart: drag.kart }))
+    if (lane >= 0) await change(() => recordMove(race.id, { lane, kart: drag.team }))
   }
 
   function startPress(event: PointerEvent<HTMLDivElement>, lane: number) {
@@ -143,7 +166,6 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
     await change(() => recordMove(race.id, { lane: menu.lane, kart: null }))
   }
 
-
   return (
     <div className="flex flex-1 flex-col select-none [-webkit-touch-callout:none]">
       <div aria-hidden="true" className="mt-3 flex items-center justify-center gap-1.5 text-xs tracking-[0.08em] text-fg-3 uppercase">
@@ -156,7 +178,8 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
         // The corridors take what the karts below leave them, and their karts get lower to fit.
         style={{ gridTemplateColumns: `repeat(${race.lanes}, minmax(0, 1fr))`, gridTemplateRows: 'minmax(0, 1fr)' }}
       >
-        {queues.map((queue, lane) => (
+        {/* The corridors the race has no more keep their karts, out of sight. */}
+        {pitlane.corridors.slice(0, race.lanes).map((queue, lane) => (
           <div
             key={lane}
             ref={(element) => {
@@ -175,18 +198,25 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
               drag?.over === lane ? 'border-solid border-fg bg-lane-over' : 'border-dashed border-line bg-lane'
             }`}
           >
-            {queue.map((kart, place) => (
-              <div
-                key={`${place}-${kart}`}
-                data-testid="corridor-kart"
-                className={`flex min-h-13 shrink basis-30.5 items-center justify-center rounded-[26px_26px_12px_12px] font-extrabold tabular-nums ${
-                  race.lanes === 3 ? 'text-[2.75rem]' : 'text-[3.5rem]'
-                } ${place === 0 ? 'ring-2 ring-fg' : 'ring-1 ring-white/8 ring-inset'}`}
-                style={{ background: kart === null ? 'var(--color-control)' : paceColour(pace.get(kart) ?? 0.5) }}
-              >
-                {kart ?? '?'}
-              </div>
-            ))}
+            {queue.map((kart, place) => {
+              const known = paceOf(kart, pace)
+              // The kart at the front goes out next.
+              const edge = place === 0 ? 'ring-2 ring-fg' : known === undefined ? '' : KNOWN
+              const unknown = known !== undefined ? '' : kart.leftBy === null ? UNKNOWN : UNKNOWN_KART
+              return (
+                <div
+                  key={kart.id}
+                  data-testid="corridor-kart"
+                  data-pace={known ?? 'unknown'}
+                  className={`relative flex min-h-13 shrink basis-30.5 items-center justify-center rounded-[26px_26px_12px_12px] font-extrabold tabular-nums ${
+                    race.lanes === 3 ? 'text-[2.75rem]' : 'text-[3.5rem]'
+                  } ${edge} ${unknown}`}
+                  style={{ background: fill(known) }}
+                >
+                  {kart.leftBy ?? '?'}
+                </div>
+              )
+            })}
             {queue.length === 0 && (
               <p className="m-auto px-1 text-center text-sm text-fg-3">Удерживайте, чтобы добавить тачку</p>
             )}
@@ -205,9 +235,42 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
         </PitKey>
       </div>
 
-      {karts.length === 0 ? (
-        <div className="mt-8 mb-6 flex flex-col items-center gap-3 text-center">
-          <p className="text-name text-fg-2">Карты появятся после квалификации</p>
+      <div className="mt-4 grid gap-2.5" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+        {all.map((team) => {
+          const known = riding(team)
+          return (
+            <button
+              key={team}
+              type="button"
+              data-testid="pit-kart"
+              data-pace={known ?? 'unknown'}
+              aria-label={`Номер ${team}`}
+              onPointerDown={(event) => startDrag(event, team)}
+              onPointerMove={moveDrag}
+              onPointerUp={endDrag}
+              onPointerCancel={() => setDrag(null)}
+              className={`relative flex touch-none items-center justify-center rounded-lg font-extrabold tabular-nums ${tile} ${
+                known === undefined ? UNKNOWN_TEAM : KNOWN
+              } ${drag?.team === team ? 'opacity-25' : ''}`}
+              style={{ background: fill(known) }}
+            >
+              {team}
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          aria-label="Другой номер"
+          onClick={() => setOther(true)}
+          className={`flex items-center justify-center rounded-lg text-fg-2 active:opacity-70 ${tile} ${UNKNOWN}`}
+        >
+          <Plus />
+        </button>
+      </div>
+
+      {karts.length === 0 && (
+        <div className="mt-6 mb-2 flex flex-col items-center gap-1 text-center">
+          <p className="text-sm text-fg-2">Скорость картов появится после квалификации</p>
           <button
             type="button"
             onClick={onQualification}
@@ -216,42 +279,23 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
             Добавить протоколы
           </button>
         </div>
-      ) : (
-        <div className="mt-4 grid gap-2.5" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-          {free.map((kart) => (
-            <button
-              key={kart}
-              type="button"
-              data-testid="pit-kart"
-              aria-label={`Карт ${kart}`}
-              onPointerDown={(event) => startDrag(event, kart)}
-              onPointerMove={moveDrag}
-              onPointerUp={endDrag}
-              onPointerCancel={() => setDrag(null)}
-              className={`flex touch-none items-center justify-center rounded-lg font-extrabold tabular-nums ring-1 ring-white/8 ring-inset ${tile} ${
-                drag?.kart === kart ? 'opacity-25' : ''
-              }`}
-              style={{ background: paceColour(pace.get(kart) ?? 0.5) }}
-            >
-              {kart}
-            </button>
-          ))}
-        </div>
       )}
 
       {drag && (
         <div
           aria-hidden="true"
-          className={`pointer-events-none fixed z-50 flex scale-115 items-center justify-center rounded-lg font-extrabold tabular-nums shadow-[0_0_0_2px_var(--color-fg),0_14px_30px_rgb(0_0_0/0.85)] ${tile}`}
+          className={`pointer-events-none fixed z-50 flex scale-115 items-center justify-center rounded-lg font-extrabold tabular-nums shadow-[0_0_0_2px_var(--color-fg),0_14px_30px_rgb(0_0_0/0.85)] ${tile} ${
+            riding(drag.team) === undefined ? UNKNOWN_TEAM : ''
+          }`}
           style={{
             left: drag.x - drag.width / 2,
             top: drag.y - drag.height / 2,
             width: drag.width,
             height: drag.height,
-            background: paceColour(pace.get(drag.kart) ?? 0.5),
+            background: fill(riding(drag.team)),
           }}
         >
-          {drag.kart}
+          {drag.team}
         </div>
       )}
 
@@ -280,11 +324,19 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
           </div>
         </>
       )}
+
+      {other && (
+        <OtherNumber
+          lanes={race.lanes}
+          onPick={(lane, team) => change(() => recordMove(race.id, { lane, kart: team }))}
+          onClose={() => setOther(false)}
+        />
+      )}
     </div>
   )
 }
 
-function PitKey({ children, onClick, disabled }: { children: ReactNode; onClick: () => void; disabled: boolean }) {
+function PitKey({ children, onClick, disabled }: { children: ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
@@ -294,5 +346,82 @@ function PitKey({ children, onClick, disabled }: { children: ReactNode; onClick:
     >
       {children}
     </button>
+  )
+}
+
+type OtherNumberProps = { lanes: number; onPick: (lane: number, team: string) => void; onClose: () => void }
+
+// A team that is not in the grid: one with no time in the protocols, or any team before them.
+// Its number is typed in, and the corridor it came into picked; from then on it is in the grid.
+function OtherNumber({ lanes, onPick, onClose }: OtherNumberProps) {
+  const sheet = useRef<HTMLDialogElement>(null)
+  const [text, setText] = useState('')
+  const [wrong, setWrong] = useState(false)
+
+  useEffect(() => {
+    // Opening focuses the field, the first thing in it.
+    sheet.current?.showModal()
+  }, [])
+
+  function pick(lane: number) {
+    const team = teamNumber(text)
+    if (team === null) return setWrong(true)
+    sheet.current?.close()
+    onPick(lane, team)
+  }
+
+  return (
+    <dialog
+      ref={sheet}
+      onClose={onClose}
+      // A tap on the dimmed screen around it closes it.
+      onClick={(event) => event.target === sheet.current && sheet.current.close()}
+      aria-label="Другой номер"
+      // At the top of the screen: the keyboard takes the bottom half. Selectable again: Safari carries
+      // the screen's no-select into the field, and a field that cannot be selected takes no typing.
+      className="mx-auto mt-[calc(env(safe-area-inset-top)+1rem)] w-[calc(100%-2rem)] max-w-sm rounded-xl bg-sheet text-fg shadow-[0_0_0_1px_var(--color-line),0_18px_40px_rgb(0_0_0/0.8)] select-text [-webkit-touch-callout:default] backdrop:bg-black/60"
+    >
+      <div className="flex flex-col px-4 pt-3 pb-2">
+        <p className="pb-3 text-xs tracking-[0.06em] text-fg-3 uppercase">Другой номер</p>
+        <TextField
+          label="Номер"
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value)
+            setWrong(false)
+          }}
+          // The return key of the keyboard takes the one corridor there is, or puts the keyboard away.
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return
+            if (lanes === 1) pick(0)
+            else event.currentTarget.blur()
+          }}
+          aria-invalid={wrong}
+          autoCapitalize="characters"
+          enterKeyHint="done"
+          autoComplete="off"
+        />
+        {wrong && (
+          <p role="alert" className="pt-2 text-sm text-amber-400">
+            Номер — до трёх цифр, можно с буквой: 7, 12A
+          </p>
+        )}
+        <p className="pt-4 pb-2 text-sm text-fg-3">Заехал в коридор</p>
+        <div className="grid gap-2.5" style={{ gridTemplateColumns: `repeat(${lanes}, minmax(0, 1fr))` }}>
+          {Array.from({ length: lanes }, (_, lane) => (
+            <PitKey key={lane} onClick={() => pick(lane)}>
+              Коридор {lane + 1}
+            </PitKey>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => sheet.current?.close()}
+          className="mt-1 h-12 text-body text-fg-2 active:opacity-70"
+        >
+          Отмена
+        </button>
+      </div>
+    </dialog>
   )
 }
