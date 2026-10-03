@@ -6,6 +6,7 @@ class Race < ApplicationRecord
   LANES = 1..3
 
   has_many :qualification_files, dependent: :delete_all
+  has_one :pit_log, dependent: :delete
 
   # Control characters too: PostgreSQL refuses a NUL in a string.
   normalizes :name, with: ->(name) { name.gsub(/[[:cntrl:]]/, " ").squish }

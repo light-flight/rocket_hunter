@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_02_210000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_03_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -21,6 +21,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_210000) do
     t.datetime "updated_at", null: false
     t.index ["token"], name: "index_invitations_on_token", unique: true
     t.index ["user_id"], name: "index_invitations_on_user_id"
+  end
+
+  create_table "pit_logs", force: :cascade do |t|
+    t.uuid "race_id", null: false
+    t.jsonb "moves", default: [], null: false
+    t.integer "count", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["race_id"], name: "index_pit_logs_on_race_id", unique: true
   end
 
   create_table "qualification_files", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -80,6 +89,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_210000) do
   end
 
   add_foreign_key "invitations", "users"
+  add_foreign_key "pit_logs", "races"
   add_foreign_key "qualification_files", "races"
   add_foreign_key "sessions", "users"
   add_foreign_key "sign_in_attempts", "users"

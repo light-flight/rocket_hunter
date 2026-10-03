@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api.ts'
 import { db, type Race } from './db.ts'
 import { newId } from './id.ts'
+import { syncPits } from './pits.ts'
 import { syncFiles } from './qualification.ts'
 
 export type { Race }
@@ -132,8 +133,9 @@ function syncRaces(onSignedOut: () => void): Promise<void> {
         again = false
         await exchange(onSignedOut)
       } while (again)
-      // The files go after the races they belong to, on their own: they may take a while.
+      // The files and the pits go after the races they belong to, on their own: files may take a while.
       void syncFiles(onSignedOut)
+      void syncPits(onSignedOut)
     } catch {
       // The database or the network failed halfway: the next exchange starts over.
     } finally {
@@ -163,7 +165,8 @@ export function useRaceSync(onSignedOut: () => void, expired: boolean) {
       if (document.visibilityState !== 'visible') return
       const races = await db.races.where('pending').equals(1).count().catch(() => 0)
       const files = await db.files.where('pending').equals(1).count().catch(() => 0)
-      if (races + files > 0) sync()
+      const pits = await db.pits.where('pending').equals(1).count().catch(() => 0)
+      if (races + files + pits > 0) sync()
     }, RETRY_MS)
     return () => clearInterval(timer)
   }, [sync])

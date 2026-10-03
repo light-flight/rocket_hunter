@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { api, upload } from './api.ts'
 import { db, type Kart, type QualificationFile, type Upload } from './db.ts'
 import { newId } from './id.ts'
+import { watchedRaces } from './watch.ts'
 
 export type { Kart, QualificationFile }
 
@@ -190,14 +191,6 @@ function fromServer(raceId: string, file: ServerFile): QualificationFile {
   }
 }
 
-// Races whose files the phone keeps up to date: the one open and the newest. A manager who
-// opened neither while there was a network has the others' files once there is one again.
-let watched: string[] = []
-
-export function watchRaces(ids: string[]) {
-  watched = [...new Set(ids)]
-}
-
 // Sends what changed here, then takes the server's lists of the watched races.
 async function exchange(onSignedOut: () => void): Promise<void> {
   // Deletions first: cheap, and a file deleted here must not be sent after all.
@@ -259,7 +252,7 @@ async function exchange(onSignedOut: () => void): Promise<void> {
     sentTo.add(file.raceId)
   }
 
-  for (const raceId of new Set([...watched, ...sentTo])) {
+  for (const raceId of new Set([...watchedRaces(), ...sentTo])) {
     const response = await api('GET', `/races/${raceId}/qualification_files`)
     if (response?.status === 401) return onSignedOut()
     if (response?.status !== 200) continue
