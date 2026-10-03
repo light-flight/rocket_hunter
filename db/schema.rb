@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_03_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_03_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -26,11 +26,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_03_130000) do
   create_table "pit_logs", force: :cascade do |t|
     t.uuid "race_id", null: false
     t.jsonb "moves", default: [], null: false
-    t.integer "count", default: 0, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.integer "version", default: 0, null: false
-    t.jsonb "sends", default: {}, null: false
+    t.jsonb "undone", default: [], null: false
     t.index ["race_id"], name: "index_pit_logs_on_race_id", unique: true
   end
 

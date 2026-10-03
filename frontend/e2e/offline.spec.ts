@@ -331,69 +331,63 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await expect(queue(0)).toHaveText(['1', '7'])
   await expect(queue(1)).toHaveText(['5', '9'])
 
-  // The server has the pits too, for the other phones of the team.
-  type PitLog = { moves: { lane: number; kart: string | null; at?: number }[]; count: number; version: number }
+  // The server has the pits too, for the other phones of the team: every move entered on any phone,
+  // with its id and time, and the ids of the moves undone. The undo above undid 9 moves, and the
+  // redo entered them again as new ones.
+  type Move = { id: string; lane: number; kart: string | null; at: number }
+  type PitLog = { moves: Move[]; undone: string[]; total: { moves: number; undone: number } }
   const pitsOnServer = async (): Promise<PitLog> => (await page.request.get(`/api/races/${raceId}/pit_log`)).json()
-  const sendPits = (log: PitLog) => page.request.put(`/api/races/${raceId}/pit_log`, { data: { pit_log: log } })
-  await expect.poll(async () => (await pitsOnServer()).count).toBe(9)
-  expect((await pitsOnServer()).moves).toHaveLength(9)
+  // What stands there, the way the phones work it out: the moves not undone, by the time they were
+  // entered.
+  const standingOnServer = async () => {
+    const { moves, undone } = await pitsOnServer()
+    return moves
+      .filter((move) => !undone.includes(move.id))
+      .sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1))
+      .map(({ lane, kart }) => [lane, kart])
+  }
+  const sendPits = (moves: Move[]) => page.request.put(`/api/races/${raceId}/pit_log`, { data: { pit_log: { moves } } })
+  await expect.poll(async () => (await pitsOnServer()).total).toEqual({ moves: 18, undone: 9 })
+  expect(await standingOnServer()).toHaveLength(9)
 
-  // Without a network a move is kept here, and goes once the network is back.
+  // Without a network an undo is kept here, and goes once the network is back.
   await context.setOffline(true)
   await page.getByRole('button', { name: 'Отменить' }).click()
   await expect(queue(0)).toHaveText(['?', '1'])
   await context.setOffline(false)
-  await expect.poll(async () => (await pitsOnServer()).count).toBe(8)
+  await expect.poll(async () => (await standingOnServer()).length).toBe(8)
 
-  // Moves made on another phone arrive here. That phone sends its log with the version of the
-  // server's log it was made from.
-  const before = await pitsOnServer()
-  const sent = await sendPits({
-    moves: [...before.moves.slice(0, before.count), { lane: 0, kart: '3' }],
-    count: before.count + 1,
-    version: before.version,
-  })
-  expect(sent.status()).toBe(200)
-  const after: PitLog = await sent.json()
-  expect(after.version).toBe(before.version + 1)
-
-  // A phone that has not had that log yet is refused: it gets the log to merge with, and the log
-  // stays as it is.
-  const stale = await sendPits({ moves: before.moves, count: before.count - 1, version: before.version })
-  expect(stale.status()).toBe(409)
-  expect(await stale.json()).toEqual(after)
-  expect(await pitsOnServer()).toEqual(after)
-
+  // Moves made on another phone arrive here. That phone sends the moves it entered, each with its
+  // own id; the same send again, as after an answer that was lost, changes nothing.
+  const three = { id: 'e2e-three', lane: 0, kart: '3', at: Date.now() }
+  expect((await sendPits([three])).status()).toBe(204)
+  const total = (await pitsOnServer()).total
+  expect((await sendPits([three])).status()).toBe(204)
+  expect((await pitsOnServer()).total).toEqual(total)
   await page.reload()
   await expect(queue(0)).toHaveText(['1', '3'])
   await expect(queue(1)).toHaveText(['5', '9'])
 
-  // Two phones enter at once: this one without a network, another one meanwhile. Neither move is
-  // lost once the network is back, and they stand in the order they were entered, wherever the
-  // server had them first.
+  // Two phones enter at once: this one without a network, another one a moment later. Neither move
+  // is lost once the network is back, and they stand in the order they were entered.
   await context.setOffline(true)
   await dragInto('11', 1)
   await expect(queue(1)).toHaveText(['9', '11'])
-  const there = await pitsOnServer()
-  const theirs = { lane: 1, kart: '13', at: Date.now() }
-  expect((await sendPits({ ...there, moves: [...there.moves, theirs], count: there.count + 1 })).status()).toBe(200)
+  expect((await sendPits([{ id: 'e2e-thirteen', lane: 1, kart: '13', at: Date.now() + 1000 }])).status()).toBe(204)
   await context.setOffline(false)
   // 11 went out on the kart 5 had left, and 13 after it on the one 9 had left.
   await expect(queue(1)).toHaveText(['11', '13'])
-  await expect
-    .poll(async () => {
-      const { moves, count } = await pitsOnServer()
-      return { moves, count }
-    })
-    .toEqual({ moves: [...there.moves, { lane: 1, kart: '11', at: expect.any(Number) }, theirs], count: there.count + 2 })
+  await expect.poll(async () => (await standingOnServer()).slice(-2)).toEqual([
+    [1, '11'],
+    [1, '13'],
+  ])
   await expect(team('11')).toHaveAttribute('data-pace', kart5)
   await expect(team('13')).toHaveAttribute('data-pace', kart9)
 
   // The server takes a move, but its answer is lost on the way back: 15 went into corridor 1 by
   // mistake. With no network then, the manager undoes it and drags 15 into corridor 2, and another
-  // phone enters 17 meanwhile. Once the network is back the phone sends the lost log again and
-  // learns that the server took it, so the undo stays: 15 came in once, where it really did.
-  const earlier = await pitsOnServer()
+  // phone enters 17 meanwhile. Once the network is back the move goes again, the undo with it, and
+  // 15 came in once, where it really did.
   let lose = true
   await page.route(`**/api/races/${raceId}/pit_log`, async (route) => {
     if (route.request().method() !== 'PUT' || !lose) return route.fallback()
@@ -401,29 +395,25 @@ test('keeps qualification protocols without a network and ranks the karts once t
     await route.fetch()
     await route.abort()
   })
+  const taken = (await pitsOnServer()).total.moves
   await dragInto('15', 0)
   await expect(queue(0)).toHaveText(['3', '15'])
-  await expect.poll(async () => (await pitsOnServer()).count).toBe(earlier.count + 1)
+  await expect.poll(async () => (await pitsOnServer()).total.moves).toBe(taken + 1)
   await context.setOffline(true)
   await page.getByRole('button', { name: 'Отменить' }).click()
   await expect(queue(0)).toHaveText(['1', '3'])
   await dragInto('15', 1)
   await expect(queue(1)).toHaveText(['13', '15'])
-  const lost = await pitsOnServer()
-  const seventeen = { lane: 0, kart: '17', at: Date.now() }
-  expect((await sendPits({ ...lost, moves: [...lost.moves, seventeen], count: lost.count + 1 })).status()).toBe(200)
+  expect((await sendPits([{ id: 'e2e-seventeen', lane: 0, kart: '17', at: Date.now() + 1000 }])).status()).toBe(204)
   await context.setOffline(false)
   await expect(queue(0)).toHaveText(['3', '17'])
   await expect(queue(1)).toHaveText(['13', '15'])
-  await expect
-    .poll(async () => {
-      const { moves, count } = await pitsOnServer()
-      return moves.slice(earlier.count, count).map(({ lane, kart }) => [lane, kart])
-    })
-    .toEqual([
-      [1, '15'],
-      [0, '17'],
-    ])
+  await expect.poll(async () => (await standingOnServer()).slice(-2)).toEqual([
+    [1, '15'],
+    [0, '17'],
+  ])
+  expect((await standingOnServer()).filter(([, kart]) => kart === '15')).toEqual([[1, '15']])
+  expect((await pitsOnServer()).total.moves).toBe(taken + 3)
 })
 
 // Protocols come out late: the pits are entered from the start of the race, by number.
@@ -463,7 +453,7 @@ test('enters the pits before any protocol, by the numbers typed in', async ({ pa
   const raceId = await page.evaluate(() => localStorage.getItem('rocket-hunter.race'))
   await expect
     .poll(async () => (await (await page.request.get(`/api/races/${raceId}/pit_log`)).json()).moves)
-    .toEqual([{ lane: 0, kart: '12A', at: expect.any(Number) }])
+    .toEqual([{ id: expect.any(String), lane: 0, kart: '12A', at: expect.any(Number) }])
   await page.reload()
   await expect(pitsTab).toHaveAttribute('aria-selected', 'true')
   await expect(team).toBeVisible()

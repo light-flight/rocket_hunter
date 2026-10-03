@@ -9,13 +9,17 @@
 // the tests (npm test).
 
 // One thing done in the pits: a team that came into a corridor, or a spare kart (null) put there
-// by hand before the race. at is when it was entered, by the clock of the phone that entered it,
-// in milliseconds since the epoch: the logs of two phones are merged by it. Moves entered before
-// the phones wrote it down have none.
-export type PitMove = { lane: number; kart: string | null; at?: number }
+// by hand before the race. id is the move's own, the same on every phone and on the server: the
+// phone that entered it gives it. at is when it was entered, by the clock of that phone, in
+// milliseconds since the epoch; a move kept from before the moves had times has its place in the
+// old log instead, spaced out (see fromOldLog), so it stays ahead of every move entered since.
+export type PitMove = { id: string; lane: number; kart: string | null; at: number }
 
-// Moves in order, and how many of them stand: the ones after count were undone.
-export type Moves = { moves: PitMove[]; count: number }
+// Everything done in the pits of a race: every move entered on any phone, and the ids of the moves
+// undone. Both only ever grow, so two phones, or a phone and the server, put theirs together by
+// taking everything in both (union): in any order, as often as they like, the result is the same,
+// and a move once undone stays undone. Nothing is ever taken out, so nothing comes back.
+export type Moves = { moves: PitMove[]; undone: string[] }
 
 // The corridors a race can have (app/models/race.rb). All of them are kept whatever the race has
 // now: fewer corridors hide the karts of the rest, more bring them back as they were.
@@ -39,8 +43,89 @@ export type Pitlane = {
   riding: Map<string, PitKart>
 }
 
+// Two phones that entered the same team into the same corridor this close together entered the
+// same stop: a stop takes about a minute, and a team comes in again only a stint later.
+export const SAME_STOP_MS = 2 * 60_000
+
+// The moves that stand, in the order they were entered: a corridor hands its karts out in the order
+// the teams came. A stop entered on two phones counts once, as the one entered first. Spare karts
+// are never taken for one another: several go into a corridor at once before the start.
 export function standing(log: Moves): PitMove[] {
-  return log.moves.slice(0, log.count)
+  const undone = new Set(log.undone)
+  const kept: PitMove[] = []
+  const last = new Map<string, PitMove>()
+  for (const move of log.moves.filter((move) => !undone.has(move.id)).sort(byTime)) {
+    if (move.kart !== null) {
+      const stop = `${move.lane} ${move.kart}`
+      const before = last.get(stop)
+      if (before && move.at - before.at <= SAME_STOP_MS) continue
+      last.set(stop, move)
+    }
+    kept.push(move)
+  }
+  return kept
+}
+
+// What "undo" takes back: the last move that stands, and the same stop entered on another phone.
+// null when nothing stands.
+export function lastMove(log: Moves): { move: PitMove; ids: string[] } | null {
+  const move = standing(log).at(-1)
+  if (!move) return null
+  const undone = new Set(log.undone)
+  const ids = log.moves
+    .filter((other) => other.id === move.id || (!undone.has(other.id) && sameStop(other, move)))
+    .map((other) => other.id)
+  return { move, ids }
+}
+
+// The time for a move entered now: never ahead of a move that already stands, even when another
+// phone's clock runs ahead of this one's, so a team dropped into a corridor joins its end.
+export function nextTime(log: Moves, now: number): number {
+  return Math.max(now, (standing(log).at(-1)?.at ?? -1) + 1)
+}
+
+// Two logs put together: every move and every undo of both, each once.
+export function union(a: Moves, b: Moves): Moves {
+  const known = new Set(a.moves.map((move) => move.id))
+  const moves = [...a.moves]
+  for (const move of b.moves) {
+    if (known.has(move.id)) continue
+    known.add(move.id)
+    moves.push(move)
+  }
+  return { moves, undone: [...new Set([...a.undone, ...b.undone])] }
+}
+
+// The moves of a log kept before moves had ids and times: the ones that stood, in order. Their
+// ids come from their place and what they are, so the phone and the server, each turning the same
+// old log, give the same moves; a move only one of them had gets an id of its own. For a time they
+// get their place, a little more than SAME_STOP_MS apart, so that two stops of a team in an old log
+// are never taken for one stop entered on two phones. The migration that turned the server's old
+// logs (db/migrate/20261003120000_keep_pit_moves_with_ids.rb) does the same.
+export function fromOldLog(moves: readonly { lane: number; kart: string | null }[], count: number): PitMove[] {
+  return moves
+    .slice(0, count)
+    .map((move, place) => ({ id: oldId(place, move), lane: move.lane, kart: move.kart, at: place * OLD_STEP }))
+}
+
+const OLD_STEP = SAME_STOP_MS + 1
+
+function oldId(place: number, move: { lane: number; kart: string | null }): string {
+  return `L${place}-${move.lane}-${move.kart ?? 'S'}`
+}
+
+// A move kept from an old log, as fromOldLog turned it.
+export function isOld(move: PitMove): boolean {
+  return move.at % OLD_STEP === 0 && move.id === oldId(move.at / OLD_STEP, move)
+}
+
+function sameStop(a: PitMove, b: PitMove): boolean {
+  return a.kart !== null && a.lane === b.lane && a.kart === b.kart && Math.abs(a.at - b.at) <= SAME_STOP_MS
+}
+
+// By when the moves were entered; by id between two of the same time, so every phone agrees.
+function byTime(a: PitMove, b: PitMove): number {
+  return a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 }
 
 // The pit lane after the moves that stand.
@@ -102,82 +187,4 @@ export function teamNumber(text: string): string | null {
     .replace(/[АВЕКМНОРСТХ]/g, (letter) => 'ABEKMHOPCTX'['АВЕКМНОРСТХ'.indexOf(letter)])
     .replace(/^0+(?=\d)/, '')
   return /^\d{1,3}[A-Z]?$/.test(team) ? team : null
-}
-
-// Two phones that entered the same team into the same corridor this close together entered the
-// same stop: a stop takes about a minute, and a team comes in again only a stint later.
-const SAME_STOP_MS = 2 * 60_000
-
-// Two phones changed the pits apart, starting from the same log (base): this phone (here) and the
-// rest of the team (there, as the server has it now). base is null when this phone has never had
-// the server's log: then it is the moves both logs start with. Each side may have undone moves of
-// the base and done new ones after. What either side undid stays undone, whoever kept it. The new
-// moves of both sides follow in the order they were entered, so a corridor hands its karts out in
-// the order the teams came. A stop entered on both phones counts once; a team that came in again
-// is a stop of its own, and is kept. Nothing new is lost. Moves with no time are never taken for
-// one another, and those of the side that undid more go first.
-export function merge(base: Moves | null, here: Moves, there: Moves): Moves {
-  const mine = standing(here)
-  const theirs = standing(there)
-  const old = base ? standing(base) : mine.slice(0, sharedStart(mine, theirs))
-  const keptHere = sharedStart(mine, old)
-  const keptThere = sharedStart(theirs, old)
-
-  const newThere = theirs.slice(keptThere)
-  // A stop the other phone entered too is kept as the server has it.
-  const newHere = without(mine.slice(keptHere), newThere)
-  const merged = [
-    ...old.slice(0, Math.min(keptHere, keptThere)),
-    ...(keptHere < keptThere ? inOrder(newHere, newThere) : inOrder(newThere, newHere)),
-  ]
-
-  if (alike(merged, theirs)) return there
-  if (alike(merged, mine)) return here
-  return { moves: merged, count: merged.length }
-}
-
-function same(a: PitMove, b: PitMove): boolean {
-  return a.lane === b.lane && a.kart === b.kart && a.at === b.at
-}
-
-function alike(a: readonly PitMove[], b: readonly PitMove[]): boolean {
-  return a.length === b.length && sharedStart(a, b) === a.length
-}
-
-function sharedStart(a: readonly PitMove[], b: readonly PitMove[]): number {
-  let i = 0
-  while (i < a.length && i < b.length && same(a[i], b[i])) i++
-  return i
-}
-
-// The same team into the same corridor, entered on two phones at about the same time.
-function sameStop(a: PitMove, b: PitMove): boolean {
-  if (a.lane !== b.lane || a.kart !== b.kart || a.at === undefined || b.at === undefined) return false
-  return Math.abs(a.at - b.at) <= SAME_STOP_MS
-}
-
-// The moves that are not the same stop as one of the others, each of the others matching one move
-// at most.
-function without(moves: readonly PitMove[], others: readonly PitMove[]): PitMove[] {
-  const left = [...others]
-  return moves.filter((move) => {
-    const match = left.findIndex((other) => sameStop(other, move))
-    if (match < 0) return true
-    left.splice(match, 1)
-    return false
-  })
-}
-
-// Two runs of moves as one, each in its own order, the one entered earlier first. When either has
-// no time, the first run goes first.
-function inOrder(first: readonly PitMove[], second: readonly PitMove[]): PitMove[] {
-  const all: PitMove[] = []
-  let i = 0
-  let j = 0
-  while (i < first.length && j < second.length) {
-    const a = first[i].at
-    const b = second[j].at
-    all.push(a === undefined || b === undefined || a <= b ? first[i++] : second[j++])
-  }
-  return [...all, ...first.slice(i), ...second.slice(j)]
 }

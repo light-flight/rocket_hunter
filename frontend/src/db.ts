@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { PitMove } from './pitlane.ts'
+import { type PitMove, fromOldLog } from './pitlane.ts'
 
 // What the phone keeps. Writes are flushed to disk before they count as done: a record must
 // survive the phone being switched off right after it was entered.
@@ -57,24 +57,24 @@ export type Ranking = { raceId: string; karts: Kart[] }
 // One thing done in the pits: a team that came into a corridor, or a spare kart (pitlane.ts).
 export type { PitMove }
 
-// Everything done in the pits of a race, in order. count is how much of it stands: undoing moves
-// it back, and the moves after it can be done again until something new is done.
+// Everything done in the pits of a race, as this phone knows it: every move entered on any phone,
+// and the ids of the moves undone (pitlane.ts).
 export type PitLog = {
   raceId: string
   moves: PitMove[]
-  count: number
-  // 1 while a change made on this phone has not reached the server.
+  undone: string[]
+  // The moves undone on this phone, the last undone last: «Вернуть» enters the last one again.
+  redo: PitMove[]
+  // The ids of what was done here that the server has not confirmed yet.
+  unsent: { moves: string[]; undone: string[] }
+  // How much of the server's two lists this phone has read: it asks for the rest only.
+  read: { moves: number; undone: number }
+  // 1 while unsent is not empty. A number, because IndexedDB cannot index booleans.
   pending: 0 | 1
-  // The log as the server last had it, with its version there: the changes made on this phone
-  // since are made on top of it, and the server takes them only from that version. null until
-  // this phone has had the server's log.
-  server: { moves: PitMove[]; count: number; version: number } | null
-  // The log sent to the server that has had no answer yet, under the id of that send. The server
-  // may have taken it all the same, so it goes again as it was, before anything newer: the
-  // server knows its sends by the id and answers whether it took it. null when nothing is on its
-  // way.
-  sent: { id: string; moves: PitMove[]; count: number } | null
 }
+
+// A pit log as it was kept before moves had ids: the moves in order, and how many of them stood.
+type OldPitLog = { raceId: string; moves: { lane: number; kart: string | null }[]; count: number; pending: 0 | 1 }
 
 export const db = new Dexie('rocket-hunter', { chromeTransactionDurability: 'strict' }) as Dexie & {
   races: EntityTable<Race, 'id'>
@@ -117,15 +117,14 @@ db.version(5)
     tx
       .table('pits')
       .toCollection()
-      .modify((log: Partial<PitLog>) => {
+      .modify((log: Partial<OldPitLog>) => {
         log.pending = log.moves?.length ? 1 : 0
       }),
   )
-// Logs kept before the server counted its versions. One with nothing waiting is a log the server
-// had (this phone sent it or took it), so a change made on it is merged from it: as version 0 it
-// is older than any log the server keeps, so the change is still merged with the server's first.
-// Which log a change still waiting here was made on is not known: it is merged with the server's
-// from the moves both start with.
+// Logs kept before moves had ids. The moves that stood get the ids and times the server gives the
+// same old log, so the two put together do not double. A log the server had is in step with it
+// already. One with changes waiting sends them: its moves, and the moves it had undone, as undone,
+// for the server may still have them standing.
 db.version(6)
   .stores({
     races: 'id, createdAt, pending',
@@ -138,8 +137,20 @@ db.version(6)
     tx
       .table('pits')
       .toCollection()
-      .modify((log: Partial<PitLog>) => {
-        log.server = log.pending ? null : { moves: log.moves ?? [], count: log.count ?? 0, version: 0 }
-        log.sent = null
+      .modify((old: OldPitLog, ref: { value: PitLog }) => {
+        const moves = fromOldLog(old.moves, old.count)
+        // The moves undone after them, which could still be done again.
+        const undone = fromOldLog(old.moves, old.moves.length).slice(old.count)
+        const waiting = (list: PitMove[]) => (old.pending ? list.map((move) => move.id) : [])
+        const unsent = { moves: waiting(moves), undone: waiting(undone) }
+        ref.value = {
+          raceId: old.raceId,
+          moves,
+          undone: unsent.undone,
+          redo: undone.reverse(),
+          unsent,
+          read: { moves: 0, undone: 0 },
+          pending: unsent.moves.length + unsent.undone.length > 0 ? 1 : 0,
+        }
       }),
   )

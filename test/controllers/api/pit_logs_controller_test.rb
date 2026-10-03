@@ -2,25 +2,31 @@ require "test_helper"
 
 class Api::PitLogsControllerTest < ActionDispatch::IntegrationTest
   RACE = "5f0c8a52-3d47-4e8e-9b0a-6f1d2c3b4a59"
-  MOVES = [ { "lane" => 0, "kart" => nil }, { "lane" => 0, "kart" => nil }, { "lane" => 0, "kart" => "13" } ].freeze
+  AT = 1_791_028_800_000
+  SPARES = [ { "id" => "s0", "lane" => 0, "kart" => nil, "at" => AT }, { "id" => "s1", "lane" => 0, "kart" => nil, "at" => AT } ].freeze
 
   setup do
     sign_in_as users(:one)
     Race.create!(id: RACE, name: "Этап 4 · Сочи", lanes: 2)
   end
 
+  # Team 13 into the first corridor, a minute in.
+  def stop(id, kart = "13", lane: 0, at: AT + 60_000)
+    { "id" => id, "lane" => lane, "kart" => kart, "at" => at }
+  end
+
   def put_log(race = RACE, **log)
     put api_race_pit_log_url(race), params: { pit_log: log }, as: :json
   end
 
-  # Another phone of the team, signed in on its own, or back to one signed in before.
-  def on_phone(session = nil)
-    return sign_in_as(users(:one)) unless session
+  def get_log(**read)
+    get api_race_pit_log_url(RACE), params: read
+    response.parsed_body
+  end
 
-    ActionDispatch::TestRequest.create.cookie_jar.tap do |cookie_jar|
-      cookie_jar.signed[:session_id] = session.id
-      cookies["session_id"] = cookie_jar[:session_id]
-    end
+  def stored
+    log = PitLog.sole
+    [ log.moves, log.undone ]
   end
 
   test "needs a session" do
@@ -28,168 +34,170 @@ class Api::PitLogsControllerTest < ActionDispatch::IntegrationTest
 
     get api_race_pit_log_url(RACE)
     assert_response :unauthorized
-    put_log(moves: MOVES, count: 3, version: 0)
+    put_log(moves: SPARES)
     assert_response :unauthorized
+    assert_not PitLog.exists?
   end
 
   test "a race with nothing done in its pits has an empty log" do
-    get api_race_pit_log_url(RACE)
-
+    assert_equal({ "moves" => [], "undone" => [], "from" => { "moves" => 0, "undone" => 0 }, "total" => { "moves" => 0, "undone" => 0 } },
+      get_log)
     assert_response :ok
-    assert_equal({ "moves" => [], "count" => 0, "version" => 0 }, response.parsed_body)
+    assert_equal({ "moves" => [], "undone" => [], "from" => { "moves" => 0, "undone" => 0 }, "total" => { "moves" => 0, "undone" => 0 } },
+      get_log(moves: 3, undone: 1))
   end
 
-  test "the first log of a race is version 1" do
-    put_log(moves: MOVES, count: 2, version: 0)
+  test "takes the moves and undos a phone sends, and gives them back" do
+    put_log(moves: SPARES + [ stop("a") ], undone: [ "s1" ])
 
-    assert_response :ok
-    assert_equal({ "moves" => MOVES, "count" => 2, "version" => 1 }, response.parsed_body)
-    get api_race_pit_log_url(RACE)
-    assert_equal({ "moves" => MOVES, "count" => 2, "version" => 1 }, response.parsed_body)
+    assert_response :no_content
+    assert_equal [ SPARES + [ stop("a") ], [ "s1" ] ], stored
+    assert_equal({ "moves" => SPARES + [ stop("a") ], "undone" => [ "s1" ], "from" => { "moves" => 0, "undone" => 0 },
+      "total" => { "moves" => 3, "undone" => 1 } }, get_log)
   end
 
-  test "a log made on the one here replaces it" do
-    put_log(moves: MOVES, count: 3, version: 0)
-    put_log(moves: MOVES.first(1), count: 0, version: 1)
+  test "puts together what two phones send" do
+    put_log(moves: SPARES + [ stop("a", "1") ])
+    # The other phone had the spares from the first, entered team 5 and undid a spare.
+    put_log(moves: SPARES + [ stop("b", "5", at: AT + 30_000) ], undone: [ "s1" ])
+    put_log(undone: [ "a" ])
 
-    assert_response :ok
-    assert_equal({ "moves" => MOVES.first(1), "count" => 0, "version" => 2 }, response.parsed_body)
-    assert_equal [ MOVES.first(1), 0, 2 ], [ PitLog.sole.moves, PitLog.sole.count, PitLog.sole.version ]
+    assert_response :no_content
+    assert_equal [ SPARES + [ stop("a", "1"), stop("b", "5", at: AT + 30_000) ], [ "s1", "a" ] ], stored
   end
 
-  test "the same log sent again changes nothing, whatever it was made on" do
-    # The answer to the first send was lost: the phone sends the same log on the same version.
-    2.times { put_log(moves: MOVES, count: 2, version: 0) }
-    assert_response :ok
-    assert_equal({ "moves" => MOVES, "count" => 2, "version" => 1 }, response.parsed_body)
+  test "the same moves sent again change nothing" do
+    put_log(moves: SPARES + [ stop("a") ], undone: [ "s0" ])
 
-    # Another phone made the same moves.
-    assert_no_changes -> { PitLog.sole.updated_at } do
-      put_log(moves: MOVES, count: 2)
+    # The answer was lost, or the phone sent them before it heard back.
+    assert_no_changes -> { PitLog.sole.attributes } do
+      put_log(moves: [ stop("a") ] + SPARES, undone: [ "s0" ])
     end
-    assert_response :ok
-    assert_equal({ "moves" => MOVES, "count" => 2, "version" => 1 }, response.parsed_body)
+    assert_response :no_content
   end
 
-  test "a log made on an older one gets the log here back and changes nothing" do
-    PitLog.create!(race_id: RACE, moves: MOVES, count: 3, version: 3)
+  test "an undo sent by one phone holds when another sends the move after it" do
+    put_log(moves: SPARES + [ stop("a") ])
+    put_log(undone: [ "a" ])
+    # The other phone has not read the undo yet and sends what it has.
+    put_log(moves: SPARES + [ stop("a") ])
+
+    assert_response :no_content
+    assert_equal [ SPARES + [ stop("a") ], [ "a" ] ], stored
+    assert_equal [ "a" ], get_log["undone"]
+  end
+
+  test "an undo may come before the move it undoes" do
+    put_log(undone: [ "a" ])
+    put_log(moves: [ stop("a") ])
+
+    assert_equal [ [ stop("a") ], [ "a" ] ], stored
+  end
+
+  test "a move sent again keeps the first copy" do
+    put_log(moves: [ stop("a") ])
+    put_log(moves: [ stop("a", "7", lane: 1), stop("b", "5"), stop("b", "9") ], undone: [ "b", "b" ])
+
+    assert_response :no_content
+    assert_equal [ [ stop("a"), stop("b", "5") ], [ "b" ] ], stored
+  end
+
+  test "a send with nothing in it changes nothing" do
+    put_log(moves: SPARES)
 
     assert_no_changes -> { PitLog.sole.attributes } do
-      put_log(moves: MOVES + [ { "lane" => 1, "kart" => "7" } ], count: 4, version: 2)
+      put_log
+      put_log(moves: [], undone: [])
     end
-
-    assert_response :conflict
-    assert_equal({ "moves" => MOVES, "count" => 3, "version" => 3 }, response.parsed_body)
+    assert_response :no_content
   end
 
-  test "a phone that never had the log here cannot write over it" do
-    PitLog.create!(race_id: RACE, moves: MOVES, count: 3, version: 1)
+  test "a phone gets only what it has not read yet" do
+    PitLog.create!(race_id: RACE, moves: SPARES + [ stop("a"), stop("b", "5") ], undone: [ "s1", "a" ])
 
-    put_log(moves: [ { "lane" => 1, "kart" => "7" } ], count: 1, version: 0)
-
-    assert_response :conflict
-    assert_equal({ "moves" => MOVES, "count" => 3, "version" => 1 }, response.parsed_body)
-    assert_equal MOVES, PitLog.sole.moves
+    assert_equal({ "moves" => [ stop("b", "5") ], "undone" => [ "a" ], "from" => { "moves" => 3, "undone" => 1 },
+      "total" => { "moves" => 4, "undone" => 2 } }, get_log(moves: 3, undone: 1))
+    assert_equal({ "moves" => [], "undone" => [], "from" => { "moves" => 4, "undone" => 2 },
+      "total" => { "moves" => 4, "undone" => 2 } }, get_log(moves: 4, undone: 2))
+    assert_equal({ "moves" => SPARES + [ stop("a"), stop("b", "5") ], "undone" => [], "from" => { "moves" => 0, "undone" => 2 },
+      "total" => { "moves" => 4, "undone" => 2 } }, get_log(undone: 2))
   end
 
-  test "a log with no version is not taken" do
-    put_log(moves: MOVES, count: 3)
+  test "a list is sent whole when the phone says nothing that makes sense of it" do
+    PitLog.create!(race_id: RACE, moves: SPARES + [ stop("a") ], undone: [ "s1" ])
 
-    assert_response :conflict
-    assert_equal({ "moves" => [], "count" => 0, "version" => 0 }, response.parsed_body)
-    assert_not PitLog.exists?
-  end
+    # Beyond the list: the log here lost what the phone read, and the phone tells from the whole one.
+    [ "", "x", "-1", "1.5", " 1", "1e1", "4", "99999999999999999999999" ].each do |read|
+      body = get_log(moves: read, undone: read)
 
-  test "a version that is not a whole number is no version" do
-    PitLog.create!(race_id: RACE, moves: MOVES, count: 3, version: 1)
-
-    [ "1", 1.0, nil, [ 1 ] ].each do |version|
-      put_log(moves: MOVES.first(1), count: 1, version: version)
-
-      assert_response :conflict
-      assert_equal({ "moves" => MOVES, "count" => 3, "version" => 1 }, response.parsed_body)
+      assert_equal [ SPARES + [ stop("a") ], [ "s1" ] ], [ body["moves"], body["undone"] ], read.inspect
+      assert_equal({ "moves" => 0, "undone" => 0 }, body["from"], read.inspect)
     end
-    assert_equal [ MOVES, 1 ], [ PitLog.sole.moves, PitLog.sole.version ]
+    get api_race_pit_log_url(RACE), params: { moves: [ 1 ], undone: { "a" => 1 } }
+    assert_equal({ "moves" => 0, "undone" => 0 }, response.parsed_body["from"])
   end
 
-  test "a send whose answer was lost is told the version it made, whatever came after it" do
-    put_log(moves: MOVES.first(2), count: 2, version: 0, send: "a1")
-    first = Current.session
-    # This phone sends team 13; the server takes it, the answer is lost.
-    put_log(moves: MOVES, count: 3, version: 1, send: "a2")
-    assert_equal 2, response.parsed_body["version"]
-
-    # Another phone undoes it, then enters team 7.
-    on_phone
-    put_log(moves: MOVES, count: 2, version: 2, send: "b1")
-    put_log(moves: MOVES.first(2) + [ { "lane" => 1, "kart" => "7" } ], count: 3, version: 3, send: "b2")
-    assert_equal 4, response.parsed_body["version"]
-
-    # The first phone sends the same log under the same id: taken, as version 2.
-    on_phone(first)
-    assert_no_changes -> { PitLog.sole.attributes } do
-      put_log(moves: MOVES, count: 3, version: 1, send: "a2")
-    end
-    assert_response :ok
-    assert_equal({ "moves" => MOVES, "count" => 3, "version" => 2 }, response.parsed_body)
-
-    # A send of its that was never taken is refused as any other.
-    put_log(moves: MOVES.first(2), count: 2, version: 1, send: "a3")
-    assert_response :conflict
-    assert_equal 4, response.parsed_body["version"]
-  end
-
-  test "refuses a log that makes no sense" do
-    put_log(moves: MOVES, count: 4, version: 0)
-
-    assert_response :unprocessable_content
-    assert_not PitLog.exists?
-  end
-
-  test "a log that makes no sense leaves the one here as it was" do
-    PitLog.create!(race_id: RACE, moves: MOVES, count: 3, version: 2)
-
-    assert_no_changes -> { PitLog.sole.attributes } do
-      put_log(moves: MOVES + [ { "lane" => 3, "kart" => "7" } ], count: 4, version: 2)
-    end
-
-    assert_response :unprocessable_content
-  end
-
-  test "a move that is not a move is refused, not kept as a spare kart" do
+  test "refuses a send that makes no sense, and keeps nothing of it" do
     [
-      [ { "lane" => 0 } ],
-      [ { "lane" => 1, "kart" => [ "7" ] } ],
-      [ { "lane" => 1, "kart" => { "number" => "7" } } ],
-      [ { "lane" => 0, "kart" => "7", "at" => "now" } ],
-      [ 7 ],
-      [ [ 0, "7" ] ]
-    ].each do |moves|
-      put_log(moves: moves, count: 1, version: 0)
+      { moves: "all of it" }, { moves: { "a" => stop("a") } }, { undone: "a" }, { undone: { "a" => 1 } },
+      { moves: [ 7 ] }, { moves: [ [ 0, "13" ] ] }, { moves: [ "a=0:13" ] },
+      { moves: [ stop("a b") ] }, { moves: [ stop("") ] }, { moves: [ stop("a" * 65) ] }, { moves: [ stop(7) ] },
+      { moves: [ stop("a", lane: 3) ] }, { moves: [ stop("a", lane: "0") ] }, { moves: [ stop("a", "пять") ] },
+      { moves: [ stop("a", 13) ] }, { moves: [ stop("a", [ "13" ]) ] }, { moves: [ stop("a", "13\u0000") ] },
+      { moves: [ stop("a", at: -1) ] }, { moves: [ stop("a", at: 1.5) ] }, { moves: [ stop("a", at: "now") ] },
+      { moves: [ stop("a").except("at") ] }, { moves: [ stop("a").merge("by" => "me") ] },
+      { moves: [ stop("a").merge("by\u0000" => "me") ] },
+      { undone: [ "a b" ] }, { undone: [ 7 ] }, { undone: [ "a\u0000" ] }, { undone: [ { "id" => "a" } ] }
+    ].each do |log|
+      put_log(**log)
 
-      assert_response :unprocessable_content, moves.inspect
+      assert_response :unprocessable_content, log.inspect
     end
     assert_not PitLog.exists?
   end
 
-  test "keeps when each move was entered" do
-    moves = [ { "lane" => 0, "kart" => nil, "at" => 1_791_028_800_000 }, { "lane" => 0, "kart" => "7", "at" => 1_791_029_000_000 } ]
-    put_log(moves: moves, count: 2, version: 0)
+  test "a send that makes no sense leaves the log here as it was" do
+    PitLog.create!(race_id: RACE, moves: SPARES, undone: [ "s1" ])
 
-    assert_response :ok
-    assert_equal moves, PitLog.sole.moves
+    assert_no_changes -> { PitLog.sole.attributes } do
+      # A good move with a bad one, and a spoiled copy of a move already here.
+      put_log(moves: [ stop("a"), stop("b", lane: 3) ], undone: [ "s0" ])
+      assert_response :unprocessable_content
+      put_log(moves: [ SPARES.first.merge("lane" => 7) ])
+      assert_response :unprocessable_content
+    end
   end
 
-  test "a send with no log in it is a bad request" do
-    put api_race_pit_log_url(RACE), params: { pit_log: "all of it" }, as: :json
+  test "takes a whole day of a big race, and no more" do
+    PitLog.create!(race_id: RACE, moves: Array.new(PitLog::MOVES_LIMIT - 1) { stop("m#{it}", (it % 60 + 1).to_s, at: AT + it) })
 
+    put_log(moves: [ stop("last") ])
+    assert_response :no_content
+    assert_equal PitLog::MOVES_LIMIT, PitLog.sole.moves.size
+
+    put_log(moves: [ stop("one-more") ])
+    assert_response :unprocessable_content
+    assert_equal PitLog::MOVES_LIMIT, PitLog.sole.moves.size
+  end
+
+  test "a send with no log in it is refused" do
+    put api_race_pit_log_url(RACE), params: { pit_log: "all of it" }, as: :json
+    assert_response :unprocessable_content
+    put api_race_pit_log_url(RACE), params: { pit_log: [ stop("a") ] }, as: :json
+    assert_response :unprocessable_content
+    # Not JSON, so nothing is taken for a log.
+    put api_race_pit_log_url(RACE), params: { moves: "all of it" }
     assert_response :bad_request
+
     assert_not PitLog.exists?
   end
 
   test "a race the server does not have yet has no pits" do
-    put_log("6a1d9b63-4e58-4f9f-8c1b-7a2e3d4c5b6a", moves: MOVES, count: 3, version: 0)
-
+    put_log("6a1d9b63-4e58-4f9f-8c1b-7a2e3d4c5b6a", moves: SPARES)
     assert_response :not_found
+
+    get api_race_pit_log_url("6a1d9b63-4e58-4f9f-8c1b-7a2e3d4c5b6a")
+    assert_response :not_found
+    assert_not PitLog.exists?
   end
 end
