@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "build:rails": "npm run build && git clean -fdXq ../public && cp -R dist/. ../public/",
     "lint": "oxlint",
+    "test": "node --test 'src/**/*.test.ts'",
     "e2e": "playwright test",
     "preview": "vite preview"
   },

@@ -91,8 +91,8 @@ jobs:
           # REDIS_URL: redis://localhost:6379/0
         run: bin/rails db:prepare test
 
-  # The React app: its linter, then the end-to-end tests that run the built app offline in
-  # Chromium against Rails, as bin/ci does.
+  # The React app: its linter and unit tests, then the end-to-end tests that run the built app
+  # offline in Chromium against Rails, as bin/ci does.
   frontend:
     runs-on: ubuntu-latest
 
@@ -134,6 +134,9 @@ jobs:
 
       - name: Lint frontend
         run: npm --prefix frontend run lint
+
+      - name: Run frontend unit tests
+        run: npm --prefix frontend test
 
       - name: Install Chromium
         run: npm --prefix frontend exec -- playwright install --with-deps chromium

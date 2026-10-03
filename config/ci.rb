@@ -10,6 +10,7 @@ CI.run do
   step "Security: Brakeman code analysis", "bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error"
   step "Tests: Rails", "bin/rails test"
   step "Tests: Seeds", "env RAILS_ENV=test bin/rails db:seed:replant"
+  step "Tests: Frontend units", "npm --prefix frontend test"
 
   # Type-checks and builds the React app, then runs it offline in Chromium against Rails.
   step "Tests: Frontend end-to-end", "npm --prefix frontend run e2e"
