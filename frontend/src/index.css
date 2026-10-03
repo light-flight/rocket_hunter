@@ -20,6 +20,9 @@
   --color-sheet: #121214;
   /* The fill of a control that is not the main action, and the hairline between rows of a list. */
   --color-control: #1c1c20;
+  /* A corridor of the pit lane, and one a kart is being dragged over. */
+  --color-lane: #0d0d10;
+  --color-lane-over: #18181c;
   /* A cap is a control of the browser, drawn in the steps as the key to press. */
   --color-cap: #222226;
   --color-cap-edge: #3a3a42;

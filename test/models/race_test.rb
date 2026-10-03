@@ -18,4 +18,41 @@ class RaceTest < ActiveSupport::TestCase
     assert_not Race.new(name: "Этап 1", lanes: 4).valid?
     assert Race.new(name: "Этап 1", lanes: 3).valid?
   end
+
+  test "karts are averaged across the protocols, fastest first, a lap seen twice counted once" do
+    race = Race.create!(name: "Этап 4")
+    read(race, "5" => [ 40_947 ], "11" => [ 41_294 ])
+    read(race, "5" => [ 40_947, 41_053 ], "11" => [ 41_300 ])
+
+    assert_equal [ { kart: "5", average: 41_000, laps: 2, pace: 0.0 }, { kart: "11", average: 41_297, laps: 2, pace: 1.0 } ],
+      race.karts
+  end
+
+  test "the pace follows the time: karts close together stay close, one far behind stands apart" do
+    race = Race.create!(name: "Этап 4")
+    read(race, { "1" => 41_000, "2" => 42_000, "3" => 43_000, "4" => 44_000, "5" => 45_000, "6" => 70_000 }.transform_values { [ it ] })
+
+    assert_equal [ 0.0, 0.034, 0.069, 0.103, 0.138, 1.0 ], race.karts.pluck(:pace)
+  end
+
+  test "one kart, or all as fast as each other, are all the fastest" do
+    race = Race.create!(name: "Этап 4")
+    assert_empty race.karts
+
+    read(race, "7" => [ 41_000 ], "8" => [ 41_000 ])
+    assert_equal [ 0.0, 0.0 ], race.karts.pluck(:pace)
+  end
+
+  test "only protocols that were read count" do
+    race = Race.create!(name: "Этап 4")
+    read(race, "7" => [ 41_000 ])
+    race.qualification_files.create!(name: "Квала 10.pdf", data: "%PDF-1.4 10".b, laps: { "8" => [ 40_000 ] })
+
+    assert_equal [ "7" ], race.karts.pluck(:kart)
+  end
+
+  private
+    def read(race, laps)
+      race.qualification_files.create!(name: "Квала.pdf", data: "%PDF-1.4 #{laps}".b).update!(status: :read, laps: laps)
+    end
 end

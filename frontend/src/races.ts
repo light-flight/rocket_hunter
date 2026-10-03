@@ -84,7 +84,7 @@ async function exchange(onSignedOut: () => void): Promise<void> {
   if (!Array.isArray(body?.races) || !body.races.every(isServerRace)) return
   const team = body.races
 
-  await db.transaction('rw', db.races, db.files, db.uploads, async () => {
+  await db.transaction('rw', [db.races, db.files, db.uploads, db.rankings, db.pits], async () => {
     const here = new Map((await db.races.toArray()).map((race) => [race.id, race]))
     const there = new Set(team.map((race) => race.id))
 
@@ -106,6 +106,8 @@ async function exchange(onSignedOut: () => void): Promise<void> {
     const files = await db.files.where('raceId').anyOf(removed).primaryKeys()
     await db.files.bulkDelete(files)
     await db.uploads.bulkDelete(files)
+    await db.rankings.bulkDelete(removed)
+    await db.pits.bulkDelete(removed)
   })
 }
 

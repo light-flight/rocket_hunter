@@ -104,14 +104,16 @@ export function TextField({ label, ...input }: TextFieldProps) {
   )
 }
 
-type BackLinkProps = { children: ReactNode; onClick: () => void; arrow?: boolean }
+type BackLinkProps = { children: ReactNode; onClick: () => void; arrow?: boolean; label?: string }
 
-// A way back, at the top left of a screen.
-export function BackLink({ children, onClick, arrow = false }: BackLinkProps) {
+// A way back, at the top left of a screen. label names where it goes when the text says
+// something else (the race it leaves).
+export function BackLink({ children, onClick, arrow = false, label }: BackLinkProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={label}
       className={`-ml-3 flex h-11 items-center self-start pr-3 text-body text-fg-2 active:opacity-70 ${arrow ? 'pl-1.5' : 'pl-3'}`}
     >
       {arrow && <ChevronLeft />}
@@ -198,6 +200,32 @@ export function Attention() {
     <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 stroke-[1.8] ${ICON}`}>
       <path d="M10.3 4.2L2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z" />
       <path d="M12 9.5v4M12 17v.01" />
+    </svg>
+  )
+}
+
+export function Undo() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-5.5 stroke-2 ${ICON}`}>
+      <path d="M9 14L4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </svg>
+  )
+}
+
+export function Redo() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-5.5 stroke-2 ${ICON}`}>
+      <path d="M15 14l5-5-5-5" />
+      <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </svg>
+  )
+}
+
+export function ArrowUp() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 stroke-2 ${ICON}`}>
+      <path d="M12 19V5M6 11l6-6 6 6" />
     </svg>
   )
 }

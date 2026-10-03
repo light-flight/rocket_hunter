@@ -3,8 +3,9 @@ import type { Auth, User } from './auth.ts'
 import { Masthead, Palm } from './glove.tsx'
 import { LanesPicker } from './Lanes.tsx'
 import { Menu } from './Menu.tsx'
+import { Pits } from './Pits.tsx'
 import { Qualification } from './Qualification.tsx'
-import { ACCEPT, addFiles, syncFiles, useFiles, watchRaces } from './qualification.ts'
+import { ACCEPT, addFiles, syncFiles, useFiles, useKarts, watchRaces } from './qualification.ts'
 import {
   cleanName,
   createRace,
@@ -348,10 +349,12 @@ const POLL_SLOWER_AFTER_MS = 5 * 60_000
 const SLOW_POLL_MS = 30_000
 
 // Inside a race. Before anything else, its qualification: the protocols to read and the karts
-// they rank. The pit screen comes at a later stage.
+// they rank. Once there are karts, the race opens in its pits.
 function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScreenProps) {
   const files = useFiles(race.id)
-  const [tab, setTab] = useState<Tab>('qualification')
+  const karts = useKarts(race.id)
+  // Picked once the karts are known: the pits when the race has them, else its qualification.
+  const [tab, setTab] = useState<Tab | null>(null)
   const [saveFailed, setSaveFailed] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
   // The files with the model now. Another one joining, or one done, starts the quick asking anew.
@@ -372,6 +375,9 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
     return () => clearTimeout(timer)
   }, [reading, onSignedOut])
 
+  // Decided once, as soon as the karts are known, so the screen never switches under the hand.
+  if (tab === null && karts !== undefined) setTab(karts.length > 0 ? 'pits' : 'qualification')
+
   async function pick(event: ChangeEvent<HTMLInputElement>) {
     const picked = [...(event.target.files ?? [])]
     // The camera hands over one photo per pick: the next pick starts afresh.
@@ -390,24 +396,40 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
   }
 
   const empty = files?.length === 0
+  // In the pits every bit of the screen goes to the corridors and the karts: the race is named
+  // by the way back.
+  const pits = !empty && tab === 'pits'
+  // A blink of the qualification before the pits is worse than a blink of nothing.
+  if (files === undefined || (!empty && tab === null)) return <div className="flex flex-1 flex-col" />
 
   return (
     <div className="flex flex-1 flex-col">
-      <Palm size={empty ? undefined : 'short'} />
-      <BackLink onClick={onBack} arrow>
-        Все гонки
-      </BackLink>
-      <h1 className="mt-2 text-title font-bold break-words">{race.name}</h1>
-      <div className="flex items-center gap-3.5 text-sm text-fg-3">
-        <span data-testid="race-lanes">{lanesLabel(race.lanes)}</span>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="flex h-11 items-center px-1 underline underline-offset-3 active:opacity-70"
-        >
-          Изменить
-        </button>
-      </div>
+      {!pits && <Palm size={empty ? undefined : 'short'} />}
+      {pits ? (
+        <>
+          <BackLink onClick={onBack} arrow label="Все гонки">
+            <span className="truncate">{race.name}</span>
+          </BackLink>
+          <h1 className="sr-only">{race.name}</h1>
+        </>
+      ) : (
+        <>
+          <BackLink onClick={onBack} arrow>
+            Все гонки
+          </BackLink>
+          <h1 className="mt-2 text-title font-bold break-words">{race.name}</h1>
+          <div className="flex items-center gap-3.5 text-sm text-fg-3">
+            <span data-testid="race-lanes">{lanesLabel(race.lanes)}</span>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex h-11 items-center px-1 underline underline-offset-3 active:opacity-70"
+            >
+              Изменить
+            </button>
+          </div>
+        </>
+      )}
 
       {/* The phone's own picker: Photos, the camera and Files. */}
       <input ref={picker} type="file" multiple accept={ACCEPT} onChange={pick} hidden />
@@ -450,10 +472,10 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
             </RaceTab>
           </div>
 
-          {tab === 'qualification' ? (
+          {tab !== 'pits' ? (
             <>
               <div role="tabpanel" aria-label="Квалификация" className="mt-3">
-                <Qualification files={files} onSignedOut={onSignedOut} />
+                <Qualification files={files} karts={karts ?? []} onSignedOut={onSignedOut} />
               </div>
               {/* Stays in reach when the list is longer than the screen. */}
               <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+1rem)] mt-auto pt-6">
@@ -464,9 +486,8 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
               </div>
             </>
           ) : (
-            <div role="tabpanel" aria-label="Пит-стопы" className="mt-[10dvh] flex flex-col gap-1.5 px-2 text-center">
-              <p className="text-name text-fg-2">Здесь будет экран пит-стопов</p>
-              <p className="text-sm text-fg-3">Он появится на следующем этапе</p>
+            <div role="tabpanel" aria-label="Пит-стопы" className="flex flex-1 flex-col">
+              <Pits race={race} karts={karts ?? []} onQualification={() => setTab('qualification')} />
             </div>
           )}
         </>
@@ -475,7 +496,7 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
   )
 }
 
-type RaceTabProps = { id: Tab; current: Tab; onSelect: (tab: Tab) => void; children: ReactNode }
+type RaceTabProps = { id: Tab; current: Tab | null; onSelect: (tab: Tab) => void; children: ReactNode }
 
 function RaceTab({ id, current, onSelect, children }: RaceTabProps) {
   const selected = id === current

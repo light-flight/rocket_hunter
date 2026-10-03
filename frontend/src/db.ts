@@ -46,10 +46,27 @@ export type Upload = {
   prepared: 0 | 1
 }
 
+// A kart of the qualification as the server ranks it: its best laps averaged across the
+// protocols, how many there were, and its pace from 0 (the fastest) to 1 (the slowest) by time.
+export type Kart = { kart: string; average: number; laps: number; pace: number }
+
+// The karts of a race, fastest first, as the server last sent them.
+export type Ranking = { raceId: string; karts: Kart[] }
+
+// One thing done in the pits: a kart dropped into a corridor, or an unknown kart (null) put there
+// by hand before the race.
+export type PitMove = { lane: number; kart: string | null }
+
+// Everything done in the pits of a race, in order. count is how much of it stands: undoing moves
+// it back, and the moves after it can be done again until something new is done.
+export type PitLog = { raceId: string; moves: PitMove[]; count: number }
+
 export const db = new Dexie('rocket-hunter', { chromeTransactionDurability: 'strict' }) as Dexie & {
   races: EntityTable<Race, 'id'>
   files: EntityTable<QualificationFile, 'id'>
   uploads: EntityTable<Upload, 'id'>
+  rankings: EntityTable<Ranking, 'raceId'>
+  pits: EntityTable<PitLog, 'raceId'>
 }
 
 db.version(1).stores({ races: 'id, createdAt, pending' })
@@ -65,3 +82,10 @@ db.version(2)
       }),
   )
 db.version(3).stores({ races: 'id, createdAt, pending', files: 'id, raceId, pending', uploads: 'id' })
+db.version(4).stores({
+  races: 'id, createdAt, pending',
+  files: 'id, raceId, pending',
+  uploads: 'id',
+  rankings: 'raceId',
+  pits: 'raceId',
+})
