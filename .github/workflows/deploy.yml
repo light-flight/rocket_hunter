@@ -51,17 +51,19 @@ jobs:
           DATABASE_KEY: ${{ secrets.DATABASE_KEY }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          for name in RAILS_MASTER_KEY DATABASE_KEY DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+          for name in RAILS_MASTER_KEY DATABASE_KEY DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS ANTHROPIC_API_KEY; do
             if [ -z "${!name}" ]; then
               echo "::error::Нет секрета $name: README, «Выкладка с телефона»."
               exit 1
             fi
           done
 
-          # .kamal/secrets reads these two files, as on a computer.
+          # .kamal/secrets reads these files, as on a computer.
           printf '%s' "$RAILS_MASTER_KEY" > config/master.key
           printf '%s' "$DATABASE_KEY" > config/database.key
+          printf '%s' "$ANTHROPIC_API_KEY" > config/anthropic.key
 
           install -d -m 700 ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519

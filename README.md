@@ -163,8 +163,11 @@ anthropic:
   api_key: "sk-ant-..."
 ```
 
-или в переменной `ANTHROPIC_API_KEY`. Пока ключа нет, файлы помечаются «Не прочитан: Не задан ключ
-API модели» и читаются заново кнопкой «Прочитать снова». Тесты модель не вызывают.
+или в переменной `ANTHROPIC_API_KEY`. На сервер переменная приходит при выкладке из файла
+`config/anthropic.key` (не в git, как `config/database.key`): workflow «Deploy» пишет его из секрета
+`ANTHROPIC_API_KEY` в GitHub, на компьютере файл кладётся руками — без него выкладка оставит сервер
+без ключа. Пока ключа нет, файлы помечаются «Не прочитан: Не задан ключ API модели» и читаются
+заново кнопкой «Прочитать снова». Тесты модель не вызывают.
 
 Попробовать модель на настоящем протоколе, без приложения:
 
@@ -250,7 +253,7 @@ Deploy → Run workflow, ветка `main`. Или попросить Claude з�
    ssh-copy-id -i ~/.ssh/rocket_hunter_deploy.pub root@64.188.61.188
    ```
 
-2. В GitHub: Settings → Secrets and variables → Actions → New repository secret, четыре секрета:
+2. В GitHub: Settings → Secrets and variables → Actions → New repository secret, пять секретов:
 
    | Секрет | Откуда взять |
    |---|---|
@@ -258,6 +261,7 @@ Deploy → Run workflow, ветка `main`. Или попросить Claude з�
    | `DEPLOY_KNOWN_HOSTS` | `ssh-keygen -F 64.188.61.188 \| grep -v '^#'` — ключ сервера, которому уже доверяет этот компьютер |
    | `RAILS_MASTER_KEY` | `cat config/master.key` |
    | `DATABASE_KEY` | `cat config/database.key` |
+   | `ANTHROPIC_API_KEY` | ключ API модели из console.anthropic.com |
 
    По `DEPLOY_KNOWN_HOSTS` выкладка узнаёт сервер: если по его адресу ответит кто-то другой,
    она остановится. Ключ сервера изменился (сервер переустановлен) — обновить этот секрет.
