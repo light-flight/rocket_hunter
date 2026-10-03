@@ -226,11 +226,11 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <PitKey onClick={() => change(() => undoMove(race.id))} disabled={log.count === 0}>
+        <PitKey onClick={() => change(() => undoMove(race.id))} disabled={moves.length === 0}>
           <Undo />
           Отменить
         </PitKey>
-        <PitKey onClick={() => change(() => redoMove(race.id))} disabled={log.count === log.moves.length}>
+        <PitKey onClick={() => change(() => redoMove(race.id))} disabled={log.redo.length === 0}>
           Вернуть
           <Redo />
         </PitKey>

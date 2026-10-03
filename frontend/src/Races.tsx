@@ -3,6 +3,7 @@ import type { Auth, User } from './auth.ts'
 import { Masthead, Palm } from './glove.tsx'
 import { LanesPicker } from './Lanes.tsx'
 import { Menu } from './Menu.tsx'
+import { standing } from './pitlane.ts'
 import { Pits } from './Pits.tsx'
 import { usePitLog } from './pits.ts'
 import { Qualification } from './Qualification.tsx'
@@ -382,7 +383,7 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
 
   // Decided once, as soon as both are known, so the screen never switches under the hand.
   if (tab === null && karts !== undefined && pitLog !== undefined) {
-    setTab(karts.length > 0 || (pitLog?.count ?? 0) > 0 ? 'pits' : 'qualification')
+    setTab(karts.length > 0 || (pitLog && standing(pitLog).length > 0) ? 'pits' : 'qualification')
   }
 
   async function pick(event: ChangeEvent<HTMLInputElement>) {

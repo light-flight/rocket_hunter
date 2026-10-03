@@ -1,25 +1,42 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { type Moves, type PitMove, kartOf, merge, paceOf, replay, standing, teamNumber, teams } from './pitlane.ts'
+import {
+  type Moves,
+  type PitMove,
+  fromOldLog,
+  isOld,
+  kartOf,
+  lastMove,
+  nextTime,
+  paceOf,
+  replay,
+  standing,
+  teamNumber,
+  teams,
+  union,
+} from './pitlane.ts'
+
+const MINUTE = 60_000
 
 // Moves written short: '1:5' is team 5 into the second corridor, '0:?' a spare into the first.
-// '0:5@12' was entered at minute 12; a move with no @ has no time, as in a log from before.
+// 'a=0:5@12' is the move with id a, entered at minute 12. With no id the move is named by its
+// place; with no time it was entered at that place in milliseconds, before any minute.
 function moves(...written: string[]): PitMove[] {
-  return written.map((move) => {
-    const [where, minute] = move.split('@')
+  return written.map((move, place) => {
+    const [named, minute] = move.split('@')
+    const [id, where] = named.includes('=') ? named.split('=') : [`m${place}`, named]
     const [lane, kart] = where.split(':')
-    return { lane: Number(lane), kart: kart === '?' ? null : kart, ...(minute && { at: Number(minute) * 60_000 }) }
+    return { id, lane: Number(lane), kart: kart === '?' ? null : kart, at: minute ? Number(minute) * MINUTE : place }
   })
 }
 
-function log(...written: string[]): Moves {
-  const all = moves(...written)
-  return { moves: all, count: all.length }
+function log(written: string[], undone: string[] = []): Moves {
+  return { moves: moves(...written), undone }
 }
 
-// A log written short again, to write a longer one after it.
-function written(log: Moves): string[] {
-  return log.moves.map(({ lane, kart, at }) => `${lane}:${kart ?? '?'}${at === undefined ? '' : `@${at / 60_000}`}`)
+// The moves that stand, written short again.
+function stand(log: Moves): string[] {
+  return standing(log).map((move) => `${move.id}=${move.lane}:${move.kart ?? '?'}`)
 }
 
 // Each corridor front first, by kart id.
@@ -113,93 +130,116 @@ test('a kart keeps the pace of the team it qualified under, whoever is on it now
   assert.equal(paceOf(pits.corridors[0][1], pace), 1)
 })
 
-test('only the moves that stand count', () => {
-  assert.deepEqual(standing({ moves: moves('0:?', '0:1'), count: 1 }), moves('0:?'))
+test('the moves that stand are the ones not undone, in the order they were entered', () => {
+  const pits = log(['c=0:9@14', 'a=0:1@10', 'b=0:5@12'], ['b'])
+
+  assert.deepEqual(stand(pits), ['a=0:1', 'c=0:9'])
 })
 
-test('what only one side changed is taken as it is, with the moves it can do again', () => {
-  const base = log('0:?', '0:1')
-  const changed = { moves: moves('0:?', '0:1', '0:5', '0:9'), count: 3 }
-
-  assert.equal(merge(base, changed, base), changed)
-  assert.equal(merge(base, base, changed), changed)
-})
-
-test('the same log on both sides needs nothing more', () => {
-  const there = log('0:?@0', '0:1@5')
-
-  assert.equal(merge(log('0:?@0'), log('0:?@0', '0:1@5'), there), there)
-  assert.equal(merge(null, log('0:?@0', '0:1@5'), there), there)
+test('two moves entered at the same moment stand in the same order on every phone', () => {
+  assert.deepEqual(stand(log(['b=0:5@10', 'a=1:9@10'])), ['a=1:9', 'b=0:5'])
+  assert.deepEqual(stand(log(['a=1:9@10', 'b=0:5@10'])), ['a=1:9', 'b=0:5'])
 })
 
 test('teams entered on two phones apart are all kept, in the order they came in', () => {
-  const base = log('0:?@0', '0:?@0')
-  const merged = merge(base, log('0:?@0', '0:?@0', '0:5@14'), log('0:?@0', '0:?@0', '0:1@10', '0:9@20'))
+  const start = ['s0=0:?@1', 's1=0:?@1']
+  const here = log([...start, 'a=0:9@12'])
+  const there = log([...start, 'b=0:1@10', 'c=0:5@11'])
 
-  assert.deepEqual(merged, log('0:?@0', '0:?@0', '0:1@10', '0:5@14', '0:9@20'))
-  // So the corridor hands its karts out as it really did: 1 took the first spare, 5 the second.
-  assert.deepEqual(corridors(...written(merged))[0], ['q5', 'q9'])
-  assert.equal(rides(written(merged), '1'), 's0')
-  assert.equal(rides(written(merged), '5'), 's1')
+  assert.deepEqual(stand(union(here, there)), ['s0=0:?', 's1=0:?', 'b=0:1', 'c=0:5', 'a=0:9'])
+  assert.deepEqual(stand(union(there, here)), stand(union(here, there)))
 })
 
-test('a stop entered on both phones counts once', () => {
-  const base = log('0:?@0', '0:?@0')
-  const there = log('0:?@0', '0:?@0', '0:1@10', '0:5@11')
+test('a stop entered on both phones counts once, as the one entered first', () => {
+  const here = log(['a=0:5@10.5', 'c=0:9@11'])
+  const there = log(['b=0:5@10'])
 
-  assert.equal(merge(base, log('0:?@0', '0:?@0', '0:1@10.5'), there), there)
-  assert.deepEqual(
-    merge(base, log('0:?@0', '0:?@0', '0:5@11.5', '0:7@12'), there),
-    log('0:?@0', '0:?@0', '0:1@10', '0:5@11', '0:7@12'),
-  )
+  assert.deepEqual(stand(union(here, there)), ['b=0:5', 'c=0:9'])
 })
 
 test('a team that comes in again is a stop of its own, whichever phone entered it', () => {
-  // This phone entered team 7 at 10:00 with no network; the other one entered 12, then 7 again.
-  const base = log('0:?@0', '0:?@0', '0:7@1', '0:3@2')
-  const here = log('0:?@0', '0:?@0', '0:7@1', '0:3@2', '0:7@10')
-  const there = log('0:?@0', '0:?@0', '0:7@1', '0:3@2', '0:12@15', '0:7@20')
-
-  assert.deepEqual(merge(base, here, there), log('0:?@0', '0:?@0', '0:7@1', '0:3@2', '0:7@10', '0:12@15', '0:7@20'))
-  // One phone handed the entering over to the other, which had no network: 5 came in on both.
-  const before = log('0:?@0', '0:?@0', '0:1@1', '0:5@2', '0:9@3')
-  assert.deepEqual(
-    merge(before, log(...written(before), '0:7@30', '0:5@35'), log(...written(before), '0:5@20', '0:12@22')),
-    log(...written(before), '0:5@20', '0:12@22', '0:7@30', '0:5@35'),
-  )
+  assert.deepEqual(stand(union(log(['a=0:5@10']), log(['b=0:5@25']))), ['a=0:5', 'b=0:5'])
+  // Into the other corridor, it is another stop however soon.
+  assert.deepEqual(stand(log(['a=0:5@10', 'b=1:5@10.5'])), ['a=0:5', 'b=1:5'])
 })
 
-test('a move undone here stays undone, and what the others did after it stays', () => {
-  const base = log('0:?', '0:?', '0:1')
-
-  assert.deepEqual(merge(base, log('0:?', '0:?'), log('0:?', '0:?', '0:1', '0:5')), log('0:?', '0:?', '0:5'))
-  assert.deepEqual(
-    merge(base, log('0:?', '0:?', '1:1'), log('0:?', '0:?', '0:1', '0:5')),
-    log('0:?', '0:?', '1:1', '0:5'),
-  )
+test('spare karts put in together are all kept', () => {
+  assert.deepEqual(stand(log(['a=0:?@1', 'b=0:?@1', 'c=0:?@1'])), ['a=0:?', 'b=0:?', 'c=0:?'])
 })
 
-test('a move undone on another phone stays undone, and what was done here after it stays', () => {
-  const base = log('0:?', '0:?', '0:1')
+test('a move undone on one phone stays undone, whatever another phone sends after', () => {
+  const entered = log(['s0=0:?@1', 'a=0:9@11'])
+  const undoneHere = { moves: entered.moves, undone: ['a'] }
 
-  assert.deepEqual(merge(base, log('0:?', '0:?', '0:1', '0:5'), log('0:?', '0:?', '1:1')), log('0:?', '0:?', '1:1', '0:5'))
+  assert.deepEqual(stand(union(undoneHere, entered)), ['s0=0:?'])
+  assert.deepEqual(stand(union(entered, undoneHere)), ['s0=0:?'])
+  // The same log sent again, as after an answer that was lost, changes nothing.
+  assert.deepEqual(union(union(undoneHere, entered), entered), union(undoneHere, entered))
 })
 
-test('a phone that has never had the server’s log adds what the server does not have', () => {
-  assert.deepEqual(merge(null, log('0:?', '0:?', '0:1', '0:5'), log('0:?', '0:?', '0:1', '0:9')), log('0:?', '0:?', '0:1', '0:9', '0:5'))
-  assert.deepEqual(merge(null, log('0:?'), log()), log('0:?'))
-  // Whatever the server has had of the same team in the same corridor before.
-  const there = log('0:?@0', '0:?@0', '0:5@10', '0:9@40')
-  assert.deepEqual(merge(null, log('0:5@30'), there), log('0:?@0', '0:?@0', '0:5@10', '0:5@30', '0:9@40'))
-  assert.equal(merge(null, log('0:9@39'), there), there)
+test('an undo holds when the other phone has put an earlier stop before it meanwhile', () => {
+  // Phone B, offline, entered 3 at minute 10; phone A entered 9 at minute 11, which reached the
+  // server first. B's 3 arrives and stands before 9; A, not having read it yet, undoes its 9.
+  const start = ['s0=0:?@1', 's1=0:?@1']
+  const server = union(log([...start, 'a9=0:9@11']), log([...start, 'b3=0:3@10']))
+  const a = { moves: moves(...start, 'a9=0:9@11'), undone: ['a9'] }
+
+  assert.deepEqual(stand(union(a, server)), ['s0=0:?', 's1=0:?', 'b3=0:3'])
+  assert.deepEqual(stand(union(server, a)), ['s0=0:?', 's1=0:?', 'b3=0:3'])
 })
 
-test('moves with no time are never taken for one another', () => {
-  assert.deepEqual(merge(null, log('0:7'), log('0:?', '0:?', '0:7', '0:3')), log('0:?', '0:?', '0:7', '0:3', '0:7'))
-  assert.deepEqual(
-    merge(log('0:?', '0:?'), log('0:?', '0:?', '0:1'), log('0:?', '0:?', '0:1')),
-    log('0:?', '0:?', '0:1', '0:1'),
-  )
+test('putting logs together gives the same in any order and any number of times', () => {
+  const one = log(['a=0:1@10', 'b=0:5@12', 'c=1:9@13'], ['b'])
+  const two = log(['a=0:1@10', 'd=0:5@12.5', 'e=1:3@11'], [])
+  const three = log(['f=0:?@1', 'g=1:9@13.2'], ['e'])
+
+  const all = stand(union(union(one, two), three))
+  assert.deepEqual(stand(union(one, union(two, three))), all)
+  assert.deepEqual(stand(union(union(three, one), two)), all)
+  assert.deepEqual(stand(union(union(union(one, two), three), two)), all)
+  // b and e are undone, and g is c entered again on another phone.
+  assert.deepEqual(all, ['f=0:?', 'a=0:1', 'd=0:5', 'c=1:9'])
+})
+
+test('undo takes back the last stop, and the same stop entered on another phone', () => {
+  const pits = log(['s0=0:?@1', 'a=0:5@10', 'b=0:5@10.5', 'c=1:1@9'])
+
+  assert.deepEqual(lastMove(pits), { move: moves('a=0:5@10')[0], ids: ['a', 'b'] })
+  assert.deepEqual(lastMove(log(['s0=0:?@1', 's1=0:?@1'])), { move: moves('s1=0:?@1')[0], ids: ['s1'] })
+  assert.equal(lastMove(log(['a=0:5@10'], ['a'])), null)
+})
+
+test('a move entered now goes after every move that stands, whatever the clocks say', () => {
+  const pits = log(['a=0:5@10', 'b=0:9@30'], ['b'])
+
+  assert.equal(nextTime(pits, 20 * MINUTE), 20 * MINUTE)
+  assert.equal(nextTime(pits, 5 * MINUTE), 10 * MINUTE + 1)
+  assert.equal(nextTime(log([]), 7), 7)
+})
+
+test('an old log turns into the same moves on the phone and on the server, before any new one', () => {
+  const old = [
+    { lane: 0, kart: null },
+    { lane: 0, kart: '5' },
+    { lane: 1, kart: '12A' },
+  ]
+  const turned = fromOldLog(old, 2)
+
+  assert.deepEqual(turned, [
+    { id: 'L0-0-S', lane: 0, kart: null, at: 0 },
+    { id: 'L1-0-5', lane: 0, kart: '5', at: 120_001 },
+  ])
+  assert.deepEqual(fromOldLog(old, 3)[2], { id: 'L2-1-12A', lane: 1, kart: '12A', at: 240_002 })
+  assert.ok(turned.every(isOld))
+  assert.ok(!isOld({ id: 'L1-0-5', lane: 0, kart: '5', at: 1 }))
+  const later = { moves: [{ id: 'n', lane: 0, kart: '9', at: Date.UTC(2026, 9, 3) }], undone: [] }
+  assert.deepEqual(stand(union(later, { moves: turned, undone: [] })), ['L0-0-S=0:?', 'L1-0-5=0:5', 'n=0:9'])
+})
+
+test('every stop of an old log stands, a team coming into the same corridor again too', () => {
+  const old = ['?', '1', '5', '1', '5', '1'].map((kart) => ({ lane: 0, kart: kart === '?' ? null : kart }))
+
+  assert.equal(standing({ moves: fromOldLog(old, old.length), undone: [] }).length, 6)
 })
 
 test('a number typed by hand is read the way the protocols are', () => {
