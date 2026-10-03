@@ -69,6 +69,11 @@ export type PitLog = {
   // since are made on top of it, and the server takes them only from that version. null until
   // this phone has had the server's log.
   server: { moves: PitMove[]; count: number; version: number } | null
+  // The log sent to the server that has had no answer yet, under the id of that send. The server
+  // may have taken it all the same, so it goes again as it was, before anything newer: the
+  // server knows its sends by the id and answers whether it took it. null when nothing is on its
+  // way.
+  sent: { id: string; moves: PitMove[]; count: number } | null
 }
 
 export const db = new Dexie('rocket-hunter', { chromeTransactionDurability: 'strict' }) as Dexie & {
@@ -116,8 +121,11 @@ db.version(5)
         log.pending = log.moves?.length ? 1 : 0
       }),
   )
-// Logs kept before the server counted its versions: which of its logs they came from is not
-// known, so a change still waiting here is merged with whatever the server has.
+// Logs kept before the server counted its versions. One with nothing waiting is a log the server
+// had (this phone sent it or took it), so a change made on it is merged from it: as version 0 it
+// is older than any log the server keeps, so the change is still merged with the server's first.
+// Which log a change still waiting here was made on is not known: it is merged with the server's
+// from the moves both start with.
 db.version(6)
   .stores({
     races: 'id, createdAt, pending',
@@ -131,6 +139,7 @@ db.version(6)
       .table('pits')
       .toCollection()
       .modify((log: Partial<PitLog>) => {
-        log.server = null
+        log.server = log.pending ? null : { moves: log.moves ?? [], count: log.count ?? 0, version: 0 }
+        log.sent = null
       }),
   )

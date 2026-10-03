@@ -24,16 +24,17 @@ const POLL_MS = 10_000
 
 // A kart of a known pace has its colour and a thin light edge: dark ones would melt into the
 // ground otherwise. One nobody knows the pace of has the fill of a control and a dashed edge, and
-// a ? in the corner when the tile shows a number. The ? is drawn by CSS, so the tile's text stays
-// the number. In a corridor it keeps clear of the round top corner; the small tiles of the teams
-// wear it on their corner, clear of the number.
+// a ? when the tile shows a number. The ? is drawn by CSS, so the tile's text stays the number. It
+// hangs on the tile's corner, ringed in the colour behind it, so it stays clear of the number
+// however low a corridor squeezes its karts.
 const KNOWN = 'ring-1 ring-white/8 ring-inset'
 const UNKNOWN = 'bg-control outline-1 -outline-offset-1 outline-dashed outline-fg-off'
 const QUESTION =
-  `${UNKNOWN} after:absolute after:flex after:size-4 after:items-center after:justify-center after:rounded-full ` +
-  "after:bg-line after:text-[0.6875rem]/none after:font-bold after:text-fg-2 after:content-['?']"
-const UNKNOWN_KART = `${QUESTION} after:top-3 after:right-3`
-const UNKNOWN_TEAM = `${QUESTION} after:-top-1.5 after:-right-1.5 after:ring-2 after:ring-ground`
+  `${UNKNOWN} after:absolute after:-top-1.5 after:-right-1.5 after:flex after:size-4 after:items-center ` +
+  'after:justify-center after:rounded-full after:bg-line after:text-[0.6875rem]/none after:font-bold ' +
+  "after:text-fg-2 after:ring-2 after:content-['?']"
+const UNKNOWN_KART = `${QUESTION} after:ring-lane`
+const UNKNOWN_TEAM = `${QUESTION} after:ring-ground`
 
 function fill(pace: number | undefined): string | undefined {
   return pace === undefined ? undefined : paceColour(pace)

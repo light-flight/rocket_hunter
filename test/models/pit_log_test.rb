@@ -12,6 +12,14 @@ class PitLogTest < ActiveSupport::TestCase
     assert log([]).valid?
   end
 
+  test "keeps when each move was entered, and moves with no time" do
+    assert log([ { "lane" => 0, "kart" => "5", "at" => 1_791_028_800_000 }, { "lane" => 0, "kart" => "7" } ]).valid?
+    assert_not log([ { "lane" => 0, "kart" => "5", "at" => -1 } ]).valid?
+    assert_not log([ { "lane" => 0, "kart" => "5", "at" => 1.5 } ]).valid?
+    assert_not log([ { "lane" => 0, "kart" => "5", "at" => "10:00" } ]).valid?
+    assert_not log([ { "lane" => 0, "kart" => "5", "at" => 1, "by" => "me" } ]).valid?
+  end
+
   test "keeps moves into a corridor the race no longer shows" do
     assert log([ { "lane" => 2, "kart" => "5" } ]).valid?
   end
