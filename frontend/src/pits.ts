@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { api } from './api.ts'
 import { db, type PitLog } from './db.ts'
+import { newId } from './id.ts'
 import { CORRIDORS, type Moves, type PitMove, merge, standing } from './pitlane.ts'
 import { watchedRaces } from './watch.ts'
 
@@ -14,7 +15,8 @@ export type { PitMove }
 // the team take it from there. Any phone may enter. The server numbers the versions of its log
 // and refuses a log made from an older version than it has: the phone then merges its changes
 // with the ones made on the other phones and sends the result, so a phone that lagged behind
-// never wipes out what another one entered.
+// never wipes out what another one entered. A send whose answer was lost goes again as it was,
+// and the server tells whether it took it: so what was undone after it is merged as undone.
 
 // The pit log of a race. undefined until the database has answered, null if it cannot be read.
 export function usePitLog(raceId: string): PitLog | null | undefined {
@@ -22,18 +24,19 @@ export function usePitLog(raceId: string): PitLog | null | undefined {
     () =>
       db.pits
         .get(raceId)
-        .then((log) => log ?? { raceId, moves: [], count: 0, pending: 0 as const, server: null })
+        .then((log) => log ?? { raceId, moves: [], count: 0, pending: 0 as const, server: null, sent: null })
         .catch(() => null),
     [raceId],
   )
 }
 
-// Something done: whatever was undone before it cannot be done again any more.
+// Something done: whatever was undone before it cannot be done again any more. It is written
+// down with the time, so that a merge with the moves of another phone keeps the order they came in.
 export async function recordMove(raceId: string, move: PitMove): Promise<void> {
   await db.transaction('rw', db.pits, async () => {
-    const log = (await db.pits.get(raceId)) ?? { raceId, moves: [], count: 0, server: null }
-    const moves = [...log.moves.slice(0, log.count), move]
-    await db.pits.put({ raceId, moves, count: moves.length, pending: 1, server: log.server })
+    const log = (await db.pits.get(raceId)) ?? { raceId, moves: [], count: 0, server: null, sent: null }
+    const moves = [...log.moves.slice(0, log.count), { ...move, at: Date.now() }]
+    await db.pits.put({ raceId, moves, count: moves.length, pending: 1, server: log.server, sent: log.sent ?? null })
   })
 }
 
@@ -57,16 +60,19 @@ const KART = /^\d{1,3}[A-Z]?$/
 function isMove(value: unknown): value is PitMove {
   const move = value as Partial<PitMove> | null
   const kart = move?.kart
+  const at = move?.at
   return (
     typeof move?.lane === 'number' &&
     Number.isInteger(move.lane) &&
     move.lane >= 0 &&
     move.lane < CORRIDORS &&
-    (kart === null || (typeof kart === 'string' && KART.test(kart)))
+    (kart === null || (typeof kart === 'string' && KART.test(kart))) &&
+    (at === undefined || (Number.isInteger(at) && at >= 0))
   )
 }
 
 type ServerLog = NonNullable<PitLog['server']>
+type Sent = NonNullable<PitLog['sent']>
 
 function isServerLog(value: unknown): value is ServerLog {
   const log = value as Partial<ServerLog> | null
@@ -93,33 +99,43 @@ async function serverLog(response: Response): Promise<ServerLog | null> {
 
 // The same moves stand in both logs.
 function alike(a: Moves, b: Moves): boolean {
-  const key = (log: Moves) => JSON.stringify(standing(log).map((move) => [move.lane, move.kart]))
+  const key = (log: Moves) => JSON.stringify(standing(log).map((move) => [move.lane, move.kart, move.at]))
   return key(a) === key(b)
 }
 
 // Sends the logs changed on this phone, then takes the logs of the races on screen. true when a
-// log has been merged with the server's here and has yet to go.
+// log here has yet to go: merged with the server's, or changed since the log the server took.
 async function exchange(onSignedOut: () => void): Promise<boolean> {
-  let merged = false
+  let more = false
 
   for (const log of await db.pits.where('pending').equals(1).toArray()) {
+    // A send with no answer goes again as it was, before anything newer: the server may have taken
+    // it, and only a send of the same id learns so.
+    const sent = log.sent ?? { id: newId(), moves: log.moves, count: log.count }
+    if (!log.sent) await db.pits.update(log.raceId, { sent })
     const response = await api('PUT', `/races/${log.raceId}/pit_log`, 10_000, {
-      pit_log: { moves: log.moves, count: log.count, version: log.server?.version ?? 0 },
+      pit_log: { moves: sent.moves, count: sent.count, version: log.server?.version ?? 0, send: sent.id },
     })
-    // No network: the rest would fail the same way.
+    // No answer, and the rest would get none either. The log may have reached the server even so.
     if (response === null) return false
     if (response.status === 401) {
       onSignedOut()
       return false
     }
-    // Not taken (a race the server does not have yet, a failure on its side): it goes next time.
-    if (response.status !== 200 && response.status !== 409) continue
-    // The server's log as it is now: the one just sent, or one changed on another phone.
+    if (response.status !== 200 && response.status !== 409) {
+      // Not taken (a race the server does not have yet, a log it refuses, a failure in it): it
+      // goes next time, as it is then. The proxy in front of the server may give up on it after it
+      // took the log (502–504): that send goes again.
+      if (response.status <= 500) await db.transaction('rw', db.pits, () => answered(log.raceId, sent))
+      continue
+    }
+    // The server's log: the one just sent, or as it is now if another phone has changed it.
     const server = await serverLog(response)
     if (!server) continue
 
-    if (response.status === 200) await taken(log, server.version)
-    else if (await refused(log.raceId, server)) merged = true
+    const unsent =
+      response.status === 200 ? await taken(log.raceId, sent, server.version) : await refused(log.raceId, sent, server)
+    if (unsent) more = true
   }
 
   for (const raceId of watchedRaces()) {
@@ -139,54 +155,66 @@ async function exchange(onSignedOut: () => void): Promise<boolean> {
       if (here?.pending === 1) return
       // An answer older than a log this phone has had from the server since.
       if (here?.server && here.server.version > server.version) return
-      await db.pits.put({ raceId, moves: server.moves, count: server.count, pending: 0, server })
+      await db.pits.put({ raceId, moves: server.moves, count: server.count, pending: 0, server, sent: null })
     })
   }
-  return merged
+  return more
+}
+
+// The answer to a send: the next one is of the log as it is then. false when the answer is to a
+// send that is not on its way any more (another tab of the app had it first).
+async function answered(raceId: string, sent: Sent): Promise<boolean> {
+  const now = await db.pits.get(raceId)
+  if (now?.sent?.id !== sent.id) return false
+  await db.pits.update(raceId, { sent: null })
+  return true
 }
 
 // The server has taken the log sent, under a new version or, when it had the same log, the one
-// it had.
-async function taken(sent: PitLog, version: number): Promise<void> {
-  const server = { moves: sent.moves, count: sent.count, version }
-  await db.transaction('rw', db.pits, async () => {
-    const now = await db.pits.get(sent.raceId)
-    if (!now) return
-    // Changed again while on its way: the change has yet to go, made on top of what was sent.
+// it had; or it took it before and the answer was lost, under the version it made then. true
+// when the log here has changed since, and the change has yet to go.
+async function taken(raceId: string, sent: Sent, version: number): Promise<boolean> {
+  return db.transaction('rw', db.pits, async () => {
+    if (!(await answered(raceId, sent))) return false
+    const now = (await db.pits.get(raceId))!
+    const server = { moves: sent.moves, count: sent.count, version }
     const changed = JSON.stringify([now.moves, now.count]) !== JSON.stringify([sent.moves, sent.count])
-    await db.pits.update(sent.raceId, changed ? { server } : { server, pending: 0 })
+    await db.pits.update(raceId, changed ? { server } : { server, pending: 0 })
+    return changed
   })
 }
 
-// The server has refused the log: another phone has changed the pits since this one last had the
-// server's log. What was done here and what was done there are merged, so neither is lost. true
-// when the merged log has something the server does not, and so has yet to go.
-async function refused(raceId: string, server: ServerLog): Promise<boolean> {
+// The server has refused the log, and has not taken it before either: another phone has changed
+// the pits since this one last had the server's log. What was done here and what was done there
+// are merged, so neither is lost. true when the merged log has something the server does not, and
+// so has yet to go.
+async function refused(raceId: string, sent: Sent, server: ServerLog): Promise<boolean> {
   return db.transaction('rw', db.pits, async () => {
+    if (!(await answered(raceId, sent))) return false
     // The log here now: it may have changed again while the refused one was on its way.
-    const now = await db.pits.get(raceId)
-    if (!now) return false
+    const now = (await db.pits.get(raceId))!
     const merged = merge(now.server, now, server)
     // Nothing done here that the server does not have: its log is the team's.
     if (alike(merged, server)) {
-      await db.pits.put({ raceId, moves: server.moves, count: server.count, pending: 0, server })
+      await db.pits.put({ raceId, moves: server.moves, count: server.count, pending: 0, server, sent: null })
       return false
     }
-    await db.pits.put({ raceId, moves: merged.moves, count: merged.count, pending: 1, server })
+    await db.pits.put({ raceId, moves: merged.moves, count: merged.count, pending: 1, server, sent: null })
     return true
   })
 }
 
-// How many times one sync sends a merged log again at once. Two phones entering at the same
-// moment can each be refused a few times over; past that the log goes with the next sync.
+// How many times one sync sends a log again at once, merged or changed while on its way. Two
+// phones entering at the same moment can each be refused a few times over; past that the log goes
+// with the next sync.
 const RESENDS = 3
 
 let running: Promise<void> | null = null
 let again = false
 
 // One exchange at a time. Asked for while one is on its way, it runs once more after it, and so it
-// does when a log has been merged with the server's. Never fails: what was not sent stays pending
-// and goes next time.
+// does when a log here has yet to go. Never fails: what was not sent stays pending and goes next
+// time.
 export function syncPits(onSignedOut: () => void): Promise<void> {
   if (running) {
     again = true

@@ -13,6 +13,16 @@ class Api::PitLogsControllerTest < ActionDispatch::IntegrationTest
     put api_race_pit_log_url(race), params: { pit_log: log }, as: :json
   end
 
+  # Another phone of the team, signed in on its own, or back to one signed in before.
+  def on_phone(session = nil)
+    return sign_in_as(users(:one)) unless session
+
+    ActionDispatch::TestRequest.create.cookie_jar.tap do |cookie_jar|
+      cookie_jar.signed[:session_id] = session.id
+      cookies["session_id"] = cookie_jar[:session_id]
+    end
+  end
+
   test "needs a session" do
     sign_out
 
@@ -102,6 +112,33 @@ class Api::PitLogsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ MOVES, 1 ], [ PitLog.sole.moves, PitLog.sole.version ]
   end
 
+  test "a send whose answer was lost is told the version it made, whatever came after it" do
+    put_log(moves: MOVES.first(2), count: 2, version: 0, send: "a1")
+    first = Current.session
+    # This phone sends team 13; the server takes it, the answer is lost.
+    put_log(moves: MOVES, count: 3, version: 1, send: "a2")
+    assert_equal 2, response.parsed_body["version"]
+
+    # Another phone undoes it, then enters team 7.
+    on_phone
+    put_log(moves: MOVES, count: 2, version: 2, send: "b1")
+    put_log(moves: MOVES.first(2) + [ { "lane" => 1, "kart" => "7" } ], count: 3, version: 3, send: "b2")
+    assert_equal 4, response.parsed_body["version"]
+
+    # The first phone sends the same log under the same id: taken, as version 2.
+    on_phone(first)
+    assert_no_changes -> { PitLog.sole.attributes } do
+      put_log(moves: MOVES, count: 3, version: 1, send: "a2")
+    end
+    assert_response :ok
+    assert_equal({ "moves" => MOVES, "count" => 3, "version" => 2 }, response.parsed_body)
+
+    # A send of its that was never taken is refused as any other.
+    put_log(moves: MOVES.first(2), count: 2, version: 1, send: "a3")
+    assert_response :conflict
+    assert_equal 4, response.parsed_body["version"]
+  end
+
   test "refuses a log that makes no sense" do
     put_log(moves: MOVES, count: 4, version: 0)
 
@@ -117,6 +154,30 @@ class Api::PitLogsControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :unprocessable_content
+  end
+
+  test "a move that is not a move is refused, not kept as a spare kart" do
+    [
+      [ { "lane" => 0 } ],
+      [ { "lane" => 1, "kart" => [ "7" ] } ],
+      [ { "lane" => 1, "kart" => { "number" => "7" } } ],
+      [ { "lane" => 0, "kart" => "7", "at" => "now" } ],
+      [ 7 ],
+      [ [ 0, "7" ] ]
+    ].each do |moves|
+      put_log(moves: moves, count: 1, version: 0)
+
+      assert_response :unprocessable_content, moves.inspect
+    end
+    assert_not PitLog.exists?
+  end
+
+  test "keeps when each move was entered" do
+    moves = [ { "lane" => 0, "kart" => nil, "at" => 1_791_028_800_000 }, { "lane" => 0, "kart" => "7", "at" => 1_791_029_000_000 } ]
+    put_log(moves: moves, count: 2, version: 0)
+
+    assert_response :ok
+    assert_equal moves, PitLog.sole.moves
   end
 
   test "a send with no log in it is a bad request" do

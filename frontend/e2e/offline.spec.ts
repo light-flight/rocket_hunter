@@ -241,8 +241,17 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await page.getByRole('tab', { name: 'Пит-стопы' }).click()
   const corridors = page.getByTestId('corridor')
   const queue = (lane: number) => corridors.nth(lane).getByTestId('corridor-kart')
+  const grid = page.getByTestId('pit-kart')
+  const team = (number: string) => page.getByRole('button', { name: `Номер ${number}`, exact: true })
   await expect(corridors).toHaveCount(2)
-  await expect(page.getByTestId('pit-kart')).toHaveCount(13)
+  await expect(grid).toHaveCount(13)
+
+  // Before any stop each team is on the kart it qualified on: 1 the fastest, 20 the slowest.
+  await expect(team('1')).toHaveAttribute('data-pace', '0')
+  await expect(team('20')).toHaveAttribute('data-pace', '1')
+  const kart5 = (await team('5').getAttribute('data-pace'))!
+  const kart9 = (await team('9').getAttribute('data-pace'))!
+  for (const pace of [kart5, kart9]) expect(pace).toMatch(/^0\.\d+$/)
 
   const longPress = async (lane: number) => {
     const box = (await corridors.nth(lane).boundingBox())!
@@ -256,58 +265,208 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await expect(queue(0)).toHaveText(['?', '?'])
   await expect(queue(1)).toHaveText(['?', '?'])
 
-  // A kart dragged into a corridor joins its end, and the one at the front goes out.
-  const dragInto = async (kart: string, lane: number) => {
-    const from = (await page.getByRole('button', { name: `Карт ${kart}`, exact: true }).boundingBox())!
+  // A team dragged into a corridor leaves its kart at the end and goes out on the one at the front.
+  const dragInto = async (number: string, lane: number) => {
+    const from = (await team(number).boundingBox())!
     const to = (await corridors.nth(lane).boundingBox())!
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
     await page.mouse.down()
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 })
     await page.mouse.up()
   }
-  // Each drop rearranges the karts below: the next one is picked once the last has landed.
+  // The next team is dragged once the last one has landed.
   await dragInto('1', 1)
   await expect(queue(1)).toHaveText(['?', '1'])
   await dragInto('5', 1)
   await expect(queue(1)).toHaveText(['1', '5'])
   await dragInto('9', 1)
   await expect(queue(1)).toHaveText(['5', '9'])
-  await expect(page.getByRole('button', { name: 'Карт 1', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Карт 9', exact: true })).toHaveCount(0)
+  // The karts 5 and 9 came on stay in the corridor with their pace. 9 went out on the kart of 1,
+  // the fastest, and 1 and 5 on spares nobody knows the pace of. Every team is still in the grid.
+  await expect(queue(1).nth(0)).toHaveAttribute('data-pace', kart5)
+  await expect(queue(1).nth(1)).toHaveAttribute('data-pace', kart9)
+  await expect(grid).toHaveCount(13)
+  await expect(page.getByRole('button', { name: 'Другой номер' })).toBeVisible()
+  await expect(team('9')).toHaveAttribute('data-pace', '0')
+  await expect(team('1')).toHaveAttribute('data-pace', 'unknown')
+  await expect(team('5')).toHaveAttribute('data-pace', 'unknown')
+
+  // A team that comes in again leaves the spare it was on at the end, and goes out on the next one.
+  await dragInto('1', 0)
+  await expect(queue(0)).toHaveText(['?', '1'])
+  await expect(queue(0).nth(0)).toHaveAttribute('data-pace', 'unknown')
+  await expect(queue(0).nth(1)).toHaveAttribute('data-pace', 'unknown')
+  await expect(team('1')).toHaveAttribute('data-pace', 'unknown')
+
+  // A number that is not in the grid is typed in, with the corridor it came into. It is read the
+  // way the protocols are, so " 07" is 7. Anything that is not a number records nothing.
+  const other = page.getByRole('dialog', { name: 'Другой номер' })
+  const number = other.getByLabel('Номер')
+  await page.getByRole('button', { name: 'Другой номер' }).click()
+  await expect(number).toBeFocused()
+  await number.fill('1234')
+  await other.getByRole('button', { name: 'Коридор 1' }).click()
+  await expect(other.getByRole('alert')).toHaveText('Номер — до трёх цифр, можно с буквой: 7, 12A')
+  await expect(queue(0)).toHaveText(['?', '1'])
+  await expect(grid).toHaveCount(13)
+  await number.fill(' 07')
+  await other.getByRole('button', { name: 'Коридор 1' }).click()
+  await expect(other).toBeHidden()
+  await expect(grid).toHaveCount(14)
+  await expect(team('7')).toHaveAttribute('data-pace', 'unknown')
+  await expect(queue(0)).toHaveText(['1', '7'])
+  await expect(queue(0).nth(1)).toHaveAttribute('data-pace', 'unknown')
 
   // Undone back to the very first move, done again, and all of it kept through a restart.
   await page.getByRole('button', { name: 'Отменить' }).click()
-  await expect(queue(1)).toHaveText(['1', '5'])
-  for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Отменить' }).click()
+  await expect(queue(0)).toHaveText(['?', '1'])
+  for (let i = 0; i < 8; i++) await page.getByRole('button', { name: 'Отменить' }).click()
   await expect(page.getByRole('button', { name: 'Отменить' })).toBeDisabled()
   await expect(queue(0)).toHaveCount(0)
-  for (let i = 0; i < 7; i++) await page.getByRole('button', { name: 'Вернуть' }).click()
+  await expect(team('9')).toHaveAttribute('data-pace', kart9)
+  for (let i = 0; i < 9; i++) await page.getByRole('button', { name: 'Вернуть' }).click()
+  await expect(queue(0)).toHaveText(['1', '7'])
   await expect(queue(1)).toHaveText(['5', '9'])
   await page.reload()
-  await expect(queue(0)).toHaveText(['?', '?'])
+  await expect(queue(0)).toHaveText(['1', '7'])
   await expect(queue(1)).toHaveText(['5', '9'])
 
   // The server has the pits too, for the other phones of the team.
-  const pitsOnServer = async (): Promise<{ moves: { lane: number; kart: string | null }[]; count: number }> =>
-    (await page.request.get(`/api/races/${raceId}/pit_log`)).json()
-  await expect.poll(async () => (await pitsOnServer()).count).toBe(7)
-  expect((await pitsOnServer()).moves).toHaveLength(7)
+  type PitLog = { moves: { lane: number; kart: string | null; at?: number }[]; count: number; version: number }
+  const pitsOnServer = async (): Promise<PitLog> => (await page.request.get(`/api/races/${raceId}/pit_log`)).json()
+  const sendPits = (log: PitLog) => page.request.put(`/api/races/${raceId}/pit_log`, { data: { pit_log: log } })
+  await expect.poll(async () => (await pitsOnServer()).count).toBe(9)
+  expect((await pitsOnServer()).moves).toHaveLength(9)
 
   // Without a network a move is kept here, and goes once the network is back.
   await context.setOffline(true)
   await page.getByRole('button', { name: 'Отменить' }).click()
-  await expect(queue(1)).toHaveText(['1', '5'])
+  await expect(queue(0)).toHaveText(['?', '1'])
   await context.setOffline(false)
-  await expect.poll(async () => (await pitsOnServer()).count).toBe(6)
+  await expect.poll(async () => (await pitsOnServer()).count).toBe(8)
 
-  // Moves made on another phone arrive here.
-  const { moves } = await pitsOnServer()
-  await page.request.put(`/api/races/${raceId}/pit_log`, {
-    data: { pit_log: { moves: [...moves.slice(0, 6), { lane: 0, kart: '3' }], count: 7 } },
+  // Moves made on another phone arrive here. That phone sends its log with the version of the
+  // server's log it was made from.
+  const before = await pitsOnServer()
+  const sent = await sendPits({
+    moves: [...before.moves.slice(0, before.count), { lane: 0, kart: '3' }],
+    count: before.count + 1,
+    version: before.version,
   })
+  expect(sent.status()).toBe(200)
+  const after: PitLog = await sent.json()
+  expect(after.version).toBe(before.version + 1)
+
+  // A phone that has not had that log yet is refused: it gets the log to merge with, and the log
+  // stays as it is.
+  const stale = await sendPits({ moves: before.moves, count: before.count - 1, version: before.version })
+  expect(stale.status()).toBe(409)
+  expect(await stale.json()).toEqual(after)
+  expect(await pitsOnServer()).toEqual(after)
+
   await page.reload()
-  await expect(queue(0)).toHaveText(['?', '3'])
-  await expect(queue(1)).toHaveText(['1', '5'])
+  await expect(queue(0)).toHaveText(['1', '3'])
+  await expect(queue(1)).toHaveText(['5', '9'])
+
+  // Two phones enter at once: this one without a network, another one meanwhile. Neither move is
+  // lost once the network is back, and they stand in the order they were entered, wherever the
+  // server had them first.
+  await context.setOffline(true)
+  await dragInto('11', 1)
+  await expect(queue(1)).toHaveText(['9', '11'])
+  const there = await pitsOnServer()
+  const theirs = { lane: 1, kart: '13', at: Date.now() }
+  expect((await sendPits({ ...there, moves: [...there.moves, theirs], count: there.count + 1 })).status()).toBe(200)
+  await context.setOffline(false)
+  // 11 went out on the kart 5 had left, and 13 after it on the one 9 had left.
+  await expect(queue(1)).toHaveText(['11', '13'])
+  await expect
+    .poll(async () => {
+      const { moves, count } = await pitsOnServer()
+      return { moves, count }
+    })
+    .toEqual({ moves: [...there.moves, { lane: 1, kart: '11', at: expect.any(Number) }, theirs], count: there.count + 2 })
+  await expect(team('11')).toHaveAttribute('data-pace', kart5)
+  await expect(team('13')).toHaveAttribute('data-pace', kart9)
+
+  // The server takes a move, but its answer is lost on the way back: 15 went into corridor 1 by
+  // mistake. With no network then, the manager undoes it and drags 15 into corridor 2, and another
+  // phone enters 17 meanwhile. Once the network is back the phone sends the lost log again and
+  // learns that the server took it, so the undo stays: 15 came in once, where it really did.
+  const earlier = await pitsOnServer()
+  let lose = true
+  await page.route(`**/api/races/${raceId}/pit_log`, async (route) => {
+    if (route.request().method() !== 'PUT' || !lose) return route.fallback()
+    lose = false
+    await route.fetch()
+    await route.abort()
+  })
+  await dragInto('15', 0)
+  await expect(queue(0)).toHaveText(['3', '15'])
+  await expect.poll(async () => (await pitsOnServer()).count).toBe(earlier.count + 1)
+  await context.setOffline(true)
+  await page.getByRole('button', { name: 'Отменить' }).click()
+  await expect(queue(0)).toHaveText(['1', '3'])
+  await dragInto('15', 1)
+  await expect(queue(1)).toHaveText(['13', '15'])
+  const lost = await pitsOnServer()
+  const seventeen = { lane: 0, kart: '17', at: Date.now() }
+  expect((await sendPits({ ...lost, moves: [...lost.moves, seventeen], count: lost.count + 1 })).status()).toBe(200)
+  await context.setOffline(false)
+  await expect(queue(0)).toHaveText(['3', '17'])
+  await expect(queue(1)).toHaveText(['13', '15'])
+  await expect
+    .poll(async () => {
+      const { moves, count } = await pitsOnServer()
+      return moves.slice(earlier.count, count).map(({ lane, kart }) => [lane, kart])
+    })
+    .toEqual([
+      [1, '15'],
+      [0, '17'],
+    ])
+})
+
+// Protocols come out late: the pits are entered from the start of the race, by number.
+test('enters the pits before any protocol, by the numbers typed in', async ({ page, context, request }) => {
+  await asInstalled(context)
+  await page.goto('/')
+  await confirmInTelegram(page, request)
+
+  await page.getByRole('button', { name: 'Новая гонка' }).click({ timeout: 10_000 })
+  await page.getByLabel('Название гонки').fill('Этап 6 · Рязань')
+  await page.getByRole('button', { name: 'Создать гонку' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Этап 6 · Рязань')
+  await expect.poll(() => racesOnServer(page)).toContain('Этап 6 · Рязань')
+
+  const pitsTab = page.getByRole('tab', { name: 'Пит-стопы' })
+  const team = page.getByRole('button', { name: 'Номер 12A', exact: true })
+  await page.getByRole('button', { name: 'Пит-стопы без квалификации' }).click()
+  await expect(pitsTab).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByText('Скорость картов появится после квалификации')).toBeVisible()
+  await expect(page.getByTestId('pit-kart')).toHaveCount(0)
+
+  // A team typed in is in the grid from then on, on a kart nobody knows the pace of. 12а typed
+  // with a Russian letter is 12A. It came into an empty corridor, so it went out on its own kart.
+  await page.getByRole('button', { name: 'Другой номер' }).click()
+  const other = page.getByRole('dialog', { name: 'Другой номер' })
+  await other.getByLabel('Номер').fill('12а')
+  await other.getByRole('button', { name: 'Коридор 1' }).click()
+  await expect(other).toBeHidden()
+  await expect(team).toHaveAttribute('data-pace', 'unknown')
+  await expect(page.getByTestId('corridor-kart')).toHaveCount(0)
+
+  // The other tab leads back to the protocols.
+  await page.getByRole('tab', { name: 'Квалификация' }).click()
+  await expect(page.getByRole('button', { name: 'Добавить квалификацию' })).toBeVisible()
+
+  // The server has the move, and the race opens in its pits from now on.
+  const raceId = await page.evaluate(() => localStorage.getItem('rocket-hunter.race'))
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/races/${raceId}/pit_log`)).json()).moves)
+    .toEqual([{ lane: 0, kart: '12A', at: expect.any(Number) }])
+  await page.reload()
+  await expect(pitsTab).toHaveAttribute('aria-selected', 'true')
+  await expect(team).toBeVisible()
 })
 
 test('a database that cannot be opened leaves a way out, not a blank screen', async ({ page, context }) => {
