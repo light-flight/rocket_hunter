@@ -4,6 +4,7 @@ import { Masthead, Palm } from './glove.tsx'
 import { LanesPicker } from './Lanes.tsx'
 import { Menu } from './Menu.tsx'
 import { Pits } from './Pits.tsx'
+import { usePitLog } from './pits.ts'
 import { Qualification } from './Qualification.tsx'
 import { ACCEPT, addFiles, syncFiles, useFiles, useKarts } from './qualification.ts'
 import {
@@ -350,11 +351,14 @@ const POLL_SLOWER_AFTER_MS = 5 * 60_000
 const SLOW_POLL_MS = 30_000
 
 // Inside a race. Before anything else, its qualification: the protocols to read and the karts
-// they rank. Once there are karts, the race opens in its pits.
+// they rank. Once there are karts, or pit stops, the race opens in its pits. The pits work before
+// any protocol too: the numbers are typed in as the teams come in.
 function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScreenProps) {
   const files = useFiles(race.id)
   const karts = useKarts(race.id)
-  // Picked once the karts are known: the pits when the race has them, else its qualification.
+  const pitLog = usePitLog(race.id)
+  // Picked once the karts and the pits are known: the pits when the race has either, else its
+  // qualification.
   const [tab, setTab] = useState<Tab | null>(null)
   const [saveFailed, setSaveFailed] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
@@ -376,8 +380,10 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
     return () => clearTimeout(timer)
   }, [reading, onSignedOut])
 
-  // Decided once, as soon as the karts are known, so the screen never switches under the hand.
-  if (tab === null && karts !== undefined) setTab(karts.length > 0 ? 'pits' : 'qualification')
+  // Decided once, as soon as both are known, so the screen never switches under the hand.
+  if (tab === null && karts !== undefined && pitLog !== undefined) {
+    setTab(karts.length > 0 || (pitLog?.count ?? 0) > 0 ? 'pits' : 'qualification')
+  }
 
   async function pick(event: ChangeEvent<HTMLInputElement>) {
     const picked = [...(event.target.files ?? [])]
@@ -399,9 +405,9 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
   const empty = files?.length === 0
   // In the pits every bit of the screen goes to the corridors and the karts: the race is named
   // by the way back.
-  const pits = !empty && tab === 'pits'
+  const pits = tab === 'pits'
   // A blink of the qualification before the pits is worse than a blink of nothing.
-  if (files === undefined || (!empty && tab === null)) return <div className="flex flex-1 flex-col" />
+  if (files === undefined || tab === null) return <div className="flex flex-1 flex-col" />
 
   return (
     <div className="flex flex-1 flex-col">
@@ -446,12 +452,20 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
         </p>
       )}
 
-      {empty && (
+      {empty && !pits && (
         <>
           <div className="mt-[14dvh] flex flex-col gap-1.5 px-2 text-center text-balance">
             <p className="text-name text-fg-2">Добавьте протоколы квалификации</p>
             <p className="text-sm text-fg-3">Карты встанут от быстрого к медленному</p>
           </div>
+          {/* A race already on, or protocols not out yet: the pits do not wait for them. */}
+          <button
+            type="button"
+            onClick={() => setTab('pits')}
+            className="mt-3 flex h-11 items-center self-center px-1 text-sm text-fg-3 underline underline-offset-3 active:opacity-70"
+          >
+            Пит-стопы без квалификации
+          </button>
           <ActionArea>
             <p className="text-center text-sm text-fg-3">PDF или фото, можно несколько</p>
             <MainAction onClick={() => picker.current?.click()}>
@@ -462,7 +476,8 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
         </>
       )}
 
-      {files && files.length > 0 && (
+      {/* Without files only in the pits: its other tab leads back to adding them. */}
+      {files && (files.length > 0 || pits) && (
         <>
           <div role="tablist" className="mt-2 grid grid-cols-2 border-b border-control">
             <RaceTab id="pits" current={tab} onSelect={setTab}>
