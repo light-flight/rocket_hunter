@@ -59,7 +59,13 @@ export type PitMove = { lane: number; kart: string | null }
 
 // Everything done in the pits of a race, in order. count is how much of it stands: undoing moves
 // it back, and the moves after it can be done again until something new is done.
-export type PitLog = { raceId: string; moves: PitMove[]; count: number }
+export type PitLog = {
+  raceId: string
+  moves: PitMove[]
+  count: number
+  // 1 while a change made on this phone has not reached the server.
+  pending: 0 | 1
+}
 
 export const db = new Dexie('rocket-hunter', { chromeTransactionDurability: 'strict' }) as Dexie & {
   races: EntityTable<Race, 'id'>
@@ -89,3 +95,20 @@ db.version(4).stores({
   rankings: 'raceId',
   pits: 'raceId',
 })
+// Logs kept before the server took them go to it.
+db.version(5)
+  .stores({
+    races: 'id, createdAt, pending',
+    files: 'id, raceId, pending',
+    uploads: 'id',
+    rankings: 'raceId',
+    pits: 'raceId, pending',
+  })
+  .upgrade((tx) =>
+    tx
+      .table('pits')
+      .toCollection()
+      .modify((log: Partial<PitLog>) => {
+        log.pending = log.moves?.length ? 1 : 0
+      }),
+  )

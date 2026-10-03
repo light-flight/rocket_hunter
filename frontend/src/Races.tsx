@@ -5,7 +5,7 @@ import { LanesPicker } from './Lanes.tsx'
 import { Menu } from './Menu.tsx'
 import { Pits } from './Pits.tsx'
 import { Qualification } from './Qualification.tsx'
-import { ACCEPT, addFiles, syncFiles, useFiles, useKarts, watchRaces } from './qualification.ts'
+import { ACCEPT, addFiles, syncFiles, useFiles, useKarts } from './qualification.ts'
 import {
   cleanName,
   createRace,
@@ -17,6 +17,7 @@ import {
   useRaceSync,
 } from './races.ts'
 import { StorageTrouble } from './Trouble.tsx'
+import { watchRaces } from './watch.ts'
 import { ActionArea, BackLink, ChevronRight, MainAction, NotSent, Paperclip, Plus, TextField } from './ui.tsx'
 
 // The app after signing in. All work is done inside one race; the app opens in the race
@@ -487,7 +488,12 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
             </>
           ) : (
             <div role="tabpanel" aria-label="Пит-стопы" className="flex flex-1 flex-col">
-              <Pits race={race} karts={karts ?? []} onQualification={() => setTab('qualification')} />
+              <Pits
+                race={race}
+                karts={karts ?? []}
+                onQualification={() => setTab('qualification')}
+                onSignedOut={onSignedOut}
+              />
             </div>
           )}
         </>

@@ -286,6 +286,28 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await page.reload()
   await expect(queue(0)).toHaveText(['?', '?'])
   await expect(queue(1)).toHaveText(['5', '9'])
+
+  // The server has the pits too, for the other phones of the team.
+  const pitsOnServer = async (): Promise<{ moves: { lane: number; kart: string | null }[]; count: number }> =>
+    (await page.request.get(`/api/races/${raceId}/pit_log`)).json()
+  await expect.poll(async () => (await pitsOnServer()).count).toBe(7)
+  expect((await pitsOnServer()).moves).toHaveLength(7)
+
+  // Without a network a move is kept here, and goes once the network is back.
+  await context.setOffline(true)
+  await page.getByRole('button', { name: 'Отменить' }).click()
+  await expect(queue(1)).toHaveText(['1', '5'])
+  await context.setOffline(false)
+  await expect.poll(async () => (await pitsOnServer()).count).toBe(6)
+
+  // Moves made on another phone arrive here.
+  const { moves } = await pitsOnServer()
+  await page.request.put(`/api/races/${raceId}/pit_log`, {
+    data: { pit_log: { moves: [...moves.slice(0, 6), { lane: 0, kart: '3' }], count: 7 } },
+  })
+  await page.reload()
+  await expect(queue(0)).toHaveText(['?', '3'])
+  await expect(queue(1)).toHaveText(['1', '5'])
 })
 
 test('a database that cannot be opened leaves a way out, not a blank screen', async ({ page, context }) => {

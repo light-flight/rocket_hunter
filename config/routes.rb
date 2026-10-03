@@ -17,6 +17,7 @@ Rails.application.routes.draw do
       resources :qualification_files, only: %i[ index update destroy ], constraints: { race_id: uuid, id: uuid } do
         post :read, on: :member
       end
+      resource :pit_log, only: %i[ show update ], constraints: { race_id: uuid }
     end
   end
 

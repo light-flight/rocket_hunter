@@ -1,13 +1,13 @@
 import { type PointerEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Kart, Race } from './db.ts'
-import { byNumber, corridors, paceColour, recordMove, redoMove, undoMove, usePitLog } from './pits.ts'
+import { byNumber, corridors, paceColour, recordMove, redoMove, syncPits, undoMove, usePitLog } from './pits.ts'
 import { ArrowUp, Redo, Undo } from './ui.tsx'
 
 // The pit screen: the corridors at the top, every kart of the qualification below. A kart that
 // comes into the pits is dragged into its corridor; the one at the front goes back below.
 // Colour tells the pace: purple the fastest, grey the middle, brown the slowest.
 
-type PitsProps = { race: Race; karts: Kart[]; onQualification: () => void }
+type PitsProps = { race: Race; karts: Kart[]; onQualification: () => void; onSignedOut: () => void }
 
 type Drag = { kart: string; pointer: number; x: number; y: number; width: number; height: number; over: number }
 type Menu = { lane: number; x: number; y: number }
@@ -15,8 +15,10 @@ type Menu = { lane: number; x: number; y: number }
 // How long a press on a corridor takes to open its menu, and how far the finger may wander.
 const PRESS_MS = 500
 const PRESS_SLOP = 10
+// How often the moves made on the other phones are asked for while the pits are on screen.
+const POLL_MS = 10_000
 
-export function Pits({ race, karts, onQualification }: PitsProps) {
+export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
   const log = usePitLog(race.id)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [menu, setMenu] = useState<Menu | null>(null)
@@ -37,6 +39,13 @@ export function Pits({ race, karts, onQualification }: PitsProps) {
       window.removeEventListener('pointerup', lifted)
     }
   }, [menu])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void syncPits(onSignedOut)
+    }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [onSignedOut])
 
   // A press still held when the screen goes away must not open a menu.
   useEffect(
@@ -73,6 +82,12 @@ export function Pits({ race, karts, onQualification }: PitsProps) {
     })
   }
 
+  // Kept on the phone first, then sent to the server when there is a network.
+  async function change(write: () => Promise<void>) {
+    await write()
+    void syncPits(onSignedOut)
+  }
+
   function startDrag(event: PointerEvent<HTMLButtonElement>, kart: string) {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     const box = event.currentTarget.getBoundingClientRect()
@@ -97,7 +112,7 @@ export function Pits({ race, karts, onQualification }: PitsProps) {
     if (drag?.pointer !== event.pointerId) return
     const lane = laneAt(event.clientX, event.clientY)
     setDrag(null)
-    if (lane >= 0) await recordMove(race.id, { lane, kart: drag.kart })
+    if (lane >= 0) await change(() => recordMove(race.id, { lane, kart: drag.kart }))
   }
 
   function startPress(event: PointerEvent<HTMLDivElement>, lane: number) {
@@ -125,8 +140,9 @@ export function Pits({ race, karts, onQualification }: PitsProps) {
   async function addUnknown() {
     if (!menu) return
     setMenu(null)
-    await recordMove(race.id, { lane: menu.lane, kart: null })
+    await change(() => recordMove(race.id, { lane: menu.lane, kart: null }))
   }
+
 
   return (
     <div className="flex flex-1 flex-col select-none [-webkit-touch-callout:none]">
@@ -179,11 +195,11 @@ export function Pits({ race, karts, onQualification }: PitsProps) {
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <PitKey onClick={() => undoMove(race.id)} disabled={log.count === 0}>
+        <PitKey onClick={() => change(() => undoMove(race.id))} disabled={log.count === 0}>
           <Undo />
           Отменить
         </PitKey>
-        <PitKey onClick={() => redoMove(race.id)} disabled={log.count === log.moves.length}>
+        <PitKey onClick={() => change(() => redoMove(race.id))} disabled={log.count === log.moves.length}>
           Вернуть
           <Redo />
         </PitKey>
