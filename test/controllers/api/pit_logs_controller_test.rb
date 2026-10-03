@@ -116,11 +116,26 @@ class Api::PitLogsControllerTest < ActionDispatch::IntegrationTest
     PitLog.create!(race_id: RACE, moves: SPARES + [ stop("a"), stop("b", "5") ], undone: [ "s1", "a" ])
 
     assert_equal({ "moves" => [ stop("b", "5") ], "undone" => [ "a" ], "from" => { "moves" => 3, "undone" => 1 },
-      "total" => { "moves" => 4, "undone" => 2 } }, get_log(moves: 3, undone: 1))
+      "total" => { "moves" => 4, "undone" => 2 } }, get_log(moves: 3, moves_last: "a", undone: 1, undone_last: "s1"))
     assert_equal({ "moves" => [], "undone" => [], "from" => { "moves" => 4, "undone" => 2 },
-      "total" => { "moves" => 4, "undone" => 2 } }, get_log(moves: 4, undone: 2))
+      "total" => { "moves" => 4, "undone" => 2 } }, get_log(moves: 4, moves_last: "b", undone: 2, undone_last: "a"))
     assert_equal({ "moves" => SPARES + [ stop("a"), stop("b", "5") ], "undone" => [], "from" => { "moves" => 0, "undone" => 2 },
-      "total" => { "moves" => 4, "undone" => 2 } }, get_log(undone: 2))
+      "total" => { "moves" => 4, "undone" => 2 } }, get_log(undone: 2, undone_last: "a"))
+  end
+
+  test "a list restored from a copy is sent whole, even grown back past what the phone read" do
+    log = PitLog.create!(race_id: RACE, moves: SPARES + [ stop("a"), stop("b", "5") ], undone: [ "s1", "a" ])
+    read = { moves: 4, moves_last: "b", undone: 2, undone_last: "a" }
+    assert_equal({ "moves" => 4, "undone" => 2 }, get_log(**read)["from"])
+
+    # Restored to the spares, then other phones sent two moves and an undo meanwhile.
+    log.update!(moves: SPARES + [ stop("c", "7"), stop("d", "9") ], undone: [ "s1", "c" ])
+    body = get_log(**read)
+
+    assert_equal({ "moves" => 0, "undone" => 0 }, body["from"])
+    assert_equal [ SPARES + [ stop("c", "7"), stop("d", "9") ], [ "s1", "c" ] ], [ body["moves"], body["undone"] ]
+    # A phone that names no last one read gets the list whole too.
+    assert_equal({ "moves" => 0, "undone" => 0 }, get_log(moves: 4, undone: 2)["from"])
   end
 
   test "a list is sent whole when the phone says nothing that makes sense of it" do

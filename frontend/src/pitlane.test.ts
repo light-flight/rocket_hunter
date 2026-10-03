@@ -209,12 +209,29 @@ test('undo takes back the last stop, and the same stop entered on another phone'
   assert.equal(lastMove(log(['a=0:5@10'], ['a'])), null)
 })
 
-test('a move entered now goes after every move that stands, whatever the clocks say', () => {
+test('a move entered now goes after the last that stands when the other phone’s clock is a little ahead', () => {
   const pits = log(['a=0:5@10', 'b=0:9@30'], ['b'])
 
   assert.equal(nextTime(pits, 20 * MINUTE), 20 * MINUTE)
-  assert.equal(nextTime(pits, 5 * MINUTE), 10 * MINUTE + 1)
+  assert.equal(nextTime(pits, 9.5 * MINUTE), 10 * MINUTE + 1)
   assert.equal(nextTime(log([]), 7), 7)
+  // A clock a minute or more behind is not followed: its moves stand by its own time.
+  assert.equal(nextTime(pits, 9 * MINUTE), 9 * MINUTE)
+})
+
+test('a clock far behind the other phone’s never makes two stops of a team one', () => {
+  // Phone B, 20 minutes ahead, entered 7 into corridor 0. Phone A then enters 5 into corridor 0
+  // twice, a stint apart: both stops stand.
+  let pits = log(['b=0:7@40'])
+  for (const [id, minute] of [
+    ['a1', 21],
+    ['a2', 36],
+  ] as const) {
+    const move = { id, lane: 0, kart: '5', at: nextTime(pits, minute * MINUTE) }
+    pits = { moves: [...pits.moves, move], undone: [] }
+  }
+
+  assert.deepEqual(stand(pits), ['a1=0:5', 'a2=0:5', 'b=0:7'])
 })
 
 test('an old log turns into the same moves on the phone and on the server, before any new one', () => {

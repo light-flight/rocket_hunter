@@ -8,8 +8,10 @@
 # undone stays undone whatever another phone sends after. Which moves stand, and in what order, the
 # phones work out (frontend/src/pitlane.ts).
 class PitLog < ApplicationRecord
-  # A day-long race of 60 teams that each stop every 15 minutes is 5760 moves.
-  MOVES_LIMIT = 10_000
+  # A day-long race of 60 teams that each stop every 15 minutes is 5760 stops. Each stays here as many
+  # times as phones entered it, and an undo done again adds a move, so there is room for two of each
+  # and more.
+  MOVES_LIMIT = 25_000
   KART = /\A\d{1,3}[A-Z]?\z/
   ID = /\A[A-Za-z0-9-]{1,64}\z/
   # Any corridor a race can have, not only the ones it has now: a race given fewer corridors later

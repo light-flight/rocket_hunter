@@ -7,7 +7,8 @@ module Api
   class PitLogsController < BaseController
     before_action :set_race
 
-    # With moves=N&undone=M, how much of each list the phone has read: it gets the rest.
+    # With moves=N&undone=M, how much of each list the phone has read, and moves_last and undone_last,
+    # the id of the last one of each it read: it gets the rest.
     def show
       log = @race.pit_log || @race.build_pit_log
       from = { moves: read(log.moves, :moves), undone: read(log.undone, :undone) }
@@ -26,9 +27,6 @@ module Api
         log.take(moves, undone)
         log.save ? head(:no_content) : head(:unprocessable_content)
       end
-    rescue ActiveRecord::RecordNotUnique
-      # The lock lets no other request make the log meanwhile; if one did, this one sees it now.
-      retry
     end
 
     private
@@ -37,11 +35,16 @@ module Api
       end
 
       # How much of a list the phone has read. 0, so the whole list, when it says nothing that makes
-      # sense, or more than the list has: the server lost what the phone read, and the phone can only
-      # tell what is missing here from the whole list.
+      # sense, more than the list has, or a last one read that is not the one at that place here: the
+      # server lost what the phone read (restored from a copy, perhaps grown back since), and the
+      # phone can only tell what is missing here from the whole list.
       def read(list, kind)
         count = params[kind]
-        count.is_a?(String) && count.match?(/\A\d+\z/) && count.to_i <= list.size ? count.to_i : 0
+        return 0 unless count.is_a?(String) && count.match?(/\A\d+\z/) && count.to_i <= list.size
+
+        count = count.to_i
+        last = list[count - 1] if count.positive?
+        count.zero? || (last.is_a?(Hash) ? last["id"] : last) == params[:"#{kind}_last"] ? count : 0
       end
 
       # One list the phone sends, each element as the phone wrote it, so the log refuses whatever no

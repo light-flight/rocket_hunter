@@ -25,7 +25,7 @@ function emptyLog(raceId: string): PitLog {
     undone: [],
     redo: [],
     unsent: { moves: [], undone: [] },
-    read: { moves: 0, undone: 0 },
+    read: { moves: 0, undone: 0, lastMove: null, lastUndone: null },
     pending: 0,
   }
 }
@@ -124,7 +124,7 @@ function isMove(value: unknown): value is PitMove {
   )
 }
 
-type Lists = PitLog['read']
+type Lists = { moves: number; undone: number }
 
 function isLists(value: unknown): value is Lists {
   if (typeof value !== 'object' || value === null) return false
@@ -180,10 +180,19 @@ async function take(raceId: string, there: Unread): Promise<void> {
     unsent.undone.push(...here.undone.filter((id) => !has.has(id) && !goes.has(id)))
   }
   // Read to the end of a list only if it had been read to where this answer starts: another tab of
-  // the app may have read further, or less, meanwhile. A move read again changes nothing.
+  // the app may have read further, or less, meanwhile. A move read again changes nothing. The last
+  // one read is the last of the answer, or, when it brought nothing new, the one read before.
+  const moved = there.from.moves <= here.read.moves
+  const undid = there.from.undone <= here.read.undone
   const read = {
-    moves: there.from.moves <= here.read.moves ? there.total.moves : here.read.moves,
-    undone: there.from.undone <= here.read.undone ? there.total.undone : here.read.undone,
+    moves: moved ? there.total.moves : here.read.moves,
+    undone: undid ? there.total.undone : here.read.undone,
+    lastMove: !moved
+      ? here.read.lastMove
+      : (there.moves.at(-1)?.id ?? (there.total.moves === here.read.moves ? here.read.lastMove : null)),
+    lastUndone: !undid
+      ? here.read.lastUndone
+      : (there.undone.at(-1) ?? (there.total.undone === here.read.undone ? here.read.lastUndone : null)),
   }
 
   // Both lists and unsent only grow, so a change shows in their lengths.
@@ -194,7 +203,9 @@ async function take(raceId: string, there: Unread): Promise<void> {
     unsent.moves.length !== here.unsent.moves.length ||
     unsent.undone.length !== here.unsent.undone.length ||
     read.moves !== here.read.moves ||
-    read.undone !== here.read.undone
+    read.undone !== here.read.undone ||
+    read.lastMove !== here.read.lastMove ||
+    read.lastUndone !== here.read.lastUndone
   if (!changed) return
   await db.pits.put({
     ...here,
@@ -237,7 +248,13 @@ async function exchange(onSignedOut: () => void): Promise<void> {
 
   for (const raceId of watchedRaces()) {
     const read = (await db.pits.get(raceId))?.read ?? emptyLog(raceId).read
-    const response = await api('GET', `/races/${raceId}/pit_log?moves=${read.moves}&undone=${read.undone}`)
+    const query = new URLSearchParams({
+      moves: String(read.moves),
+      moves_last: read.lastMove ?? '',
+      undone: String(read.undone),
+      undone_last: read.lastUndone ?? '',
+    })
+    const response = await api('GET', `/races/${raceId}/pit_log?${query}`)
     if (response === null) return
     if (response.status === 401) {
       onSignedOut()
