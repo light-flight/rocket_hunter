@@ -67,8 +67,9 @@ export type PitLog = {
   redo: PitMove[]
   // The ids of what was done here that the server has not confirmed yet.
   unsent: { moves: string[]; undone: string[] }
-  // How much of the server's two lists this phone has read: it asks for the rest only.
-  read: { moves: number; undone: number }
+  // How much of the server's two lists this phone has read, and the id of the last one of each it
+  // read: it asks for the rest only, and the server can tell it is still the list this phone read.
+  read: { moves: number; undone: number; lastMove: string | null; lastUndone: string | null }
   // 1 while unsent is not empty. A number, because IndexedDB cannot index booleans.
   pending: 0 | 1
 }
@@ -123,8 +124,10 @@ db.version(5)
   )
 // Logs kept before moves had ids. The moves that stood get the ids and times the server gives the
 // same old log, so the two put together do not double. A log the server had is in step with it
-// already. One with changes waiting sends them: its moves, and the moves it had undone, as undone,
-// for the server may still have them standing.
+// already. One with changes waiting sends them: its moves, and the moves it had undone and could
+// still do again, as undone, for the server may still have them standing. A move it undid and
+// then entered something else in place of is gone from it, so the server's copy stays and is
+// undone again by hand (README, «Выкладка»).
 db.version(6)
   .stores({
     races: 'id, createdAt, pending',
@@ -149,7 +152,7 @@ db.version(6)
           undone: unsent.undone,
           redo: undone.reverse(),
           unsent,
-          read: { moves: 0, undone: 0 },
+          read: { moves: 0, undone: 0, lastMove: null, lastUndone: null },
           pending: unsent.moves.length + unsent.undone.length > 0 ? 1 : 0,
         }
       }),

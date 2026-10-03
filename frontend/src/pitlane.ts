@@ -78,10 +78,18 @@ export function lastMove(log: Moves): { move: PitMove; ids: string[] } | null {
   return { move, ids }
 }
 
-// The time for a move entered now: never ahead of a move that already stands, even when another
-// phone's clock runs ahead of this one's, so a team dropped into a corridor joins its end.
+// How far another phone's clock may run ahead of this one's for a move entered here still to join
+// the end. Moves pushed past it stand a millisecond apart, and two of them are never two stops of
+// one team: a team comes into a corridor again only a stint later.
+export const CLOCKS_APART_MS = 60_000
+
+// The time for a move entered now: after the last move that stands, so a team dropped into a
+// corridor joins its end, when another phone's clock runs a little ahead of this one's. A clock far
+// ahead is not followed: moves pushed after it would stand a millisecond apart for as long as it is
+// ahead, and the same team's next stop would be taken for one stop entered on two phones.
 export function nextTime(log: Moves, now: number): number {
-  return Math.max(now, (standing(log).at(-1)?.at ?? -1) + 1)
+  const last = standing(log).at(-1)?.at
+  return last !== undefined && last >= now && last - now < CLOCKS_APART_MS ? last + 1 : now
 }
 
 // Two logs put together: every move and every undo of both, each once.
