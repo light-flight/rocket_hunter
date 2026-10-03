@@ -79,6 +79,10 @@ class Api::QualificationFilesControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ ID, "read" ], file.values_at("id", "status")
     assert_equal [ 40_899 ], file["laps"]["1"]
     assert_not file.key?("data")
+    karts = response.parsed_body["karts"]
+    assert_equal 13, karts.size
+    assert_equal({ "kart" => "1", "average" => 40_899, "laps" => 1, "pace" => 0.0 }, karts.first)
+    assert_equal [ "20", 1.0 ], karts.last.values_at("kart", "pace")
   end
 
   test "deletes a file, and a file already gone is no error" do

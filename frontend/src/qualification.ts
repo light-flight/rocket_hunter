@@ -1,9 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { api, upload } from './api.ts'
-import { db, type QualificationFile, type Upload } from './db.ts'
+import { db, type Kart, type QualificationFile, type Upload } from './db.ts'
 import { newId } from './id.ts'
 
-export type { QualificationFile }
+export type { Kart, QualificationFile }
 
 // Qualification protocols. A file picked on the phone is kept there with its bytes, even
 // without a network, and goes to the server when there is one. The server has the model read
@@ -108,38 +108,27 @@ export async function rereadFile(file: QualificationFile, onSignedOut: () => voi
   return server !== null
 }
 
-// A kart, the average of its best laps across the files of the race, and how many there were.
-export type KartPace = { kart: string; average: number; laps: number }
+// The karts of a race, fastest first, as the server ranked them last. undefined until the
+// database has answered.
+export function useKarts(raceId: string): Kart[] | undefined {
+  return useLiveQuery(
+    () =>
+      db.rankings
+        .get(raceId)
+        .then((ranking) => ranking?.karts ?? [])
+        .catch(() => []),
+    [raceId],
+  )
+}
 
-// The karts from the fastest to the slowest. A best lap that comes twice (the same protocol
-// sent as a photo and as a PDF) counts once.
-export function rankKarts(files: QualificationFile[]): KartPace[] {
-  const seen = new Set<string>()
-  const laps = new Map<string, number[]>()
-
-  for (const file of files) {
-    if (file.status !== 'read' || file.deleted === 1) continue
-    for (const [kart, times] of Object.entries(file.laps)) {
-      for (const ms of times) {
-        if (seen.has(`${kart} ${ms}`)) continue
-        seen.add(`${kart} ${ms}`)
-        laps.set(kart, [...(laps.get(kart) ?? []), ms])
-      }
-    }
-  }
-
-  return [...laps]
-    .map(([kart, times]) => ({
-      kart,
-      average: Math.round(times.reduce((sum, ms) => sum + ms, 0) / times.length),
-      laps: times.length,
-    }))
-    .sort(
-      (a, b) =>
-        a.average - b.average ||
-        b.laps - a.laps ||
-        a.kart.localeCompare(b.kart, 'ru', { numeric: true }),
-    )
+function isKart(value: unknown): value is Kart {
+  const kart = value as Partial<Kart> | null
+  return (
+    typeof kart?.kart === 'string' &&
+    typeof kart.average === 'number' &&
+    typeof kart.laps === 'number' &&
+    typeof kart.pace === 'number'
+  )
 }
 
 // 40947 -> "40.947", 62345 -> "1:02.345".
@@ -275,11 +264,14 @@ async function exchange(onSignedOut: () => void): Promise<void> {
     if (response?.status === 401) return onSignedOut()
     if (response?.status !== 200) continue
 
-    const body: { files?: unknown } | null = await response.json().catch(() => null)
+    const body: { files?: unknown; karts?: unknown } | null = await response.json().catch(() => null)
     if (!Array.isArray(body?.files) || !body.files.every(isServerFile)) continue
+    if (!Array.isArray(body.karts) || !body.karts.every(isKart)) continue
     const files = body.files
+    const karts = body.karts
 
-    await db.transaction('rw', db.files, db.uploads, async () => {
+    await db.transaction('rw', db.files, db.uploads, db.rankings, async () => {
+      await db.rankings.put({ raceId, karts })
       const here = new Map((await db.files.where('raceId').equals(raceId).toArray()).map((file) => [file.id, file]))
       const there = new Set(files.map((file) => file.id))
       // A change made here and not sent yet wins over what the server has.

@@ -3,9 +3,8 @@ import {
   deleteFile,
   formatGap,
   formatLap,
-  type KartPace,
+  type Kart,
   type QualificationFile,
-  rankKarts,
   rereadFile,
   syncFiles,
 } from './qualification.ts'
@@ -16,12 +15,11 @@ import { plural } from './words.ts'
 // The qualification of a race: the protocols the managers added and the karts they show,
 // from the fastest to the slowest.
 
-type QualificationProps = { files: QualificationFile[]; onSignedOut: () => void }
+type QualificationProps = { files: QualificationFile[]; karts: Kart[]; onSignedOut: () => void }
 
-export function Qualification({ files, onSignedOut }: QualificationProps) {
+export function Qualification({ files, karts, onSignedOut }: QualificationProps) {
   const [showFiles, setShowFiles] = useState(false)
   const [opened, setOpened] = useState<string | null>(null)
-  const karts = rankKarts(files)
   // Files still on their way, or that need a look, stay in sight. Once all are read without
   // a note they fold into one line above the karts.
   const settled = files.every((file) => file.status === 'read' && file.warnings.length === 0)
@@ -107,7 +105,7 @@ function FileStatus({ file }: { file: QualificationFile }) {
   )
 }
 
-function KartList({ karts }: { karts: KartPace[] }) {
+function KartList({ karts }: { karts: Kart[] }) {
   const fastest = karts[0].average
 
   return (

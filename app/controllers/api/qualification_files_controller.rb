@@ -5,7 +5,7 @@ module Api
     before_action :set_race
 
     def index
-      render json: { files: @race.qualification_files.listed.order(:created_at).map { file_json(it) } }
+      render json: { files: @race.qualification_files.listed.order(:created_at).map { file_json(it) }, karts: @race.karts }
     end
 
     # Takes a file in. One already here is answered as it is: a file never changes.

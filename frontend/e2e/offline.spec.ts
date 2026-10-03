@@ -191,6 +191,7 @@ test('keeps qualification protocols without a network and ranks the karts once t
   // The races of the previous test are there: this one makes its own.
   await page.getByRole('button', { name: 'Новая гонка' }).click({ timeout: 10_000 })
   await page.getByLabel('Название гонки').fill('Этап 5 · Тольятти')
+  await page.getByRole('radio', { name: '2 коридора' }).click()
   await page.getByRole('button', { name: 'Создать гонку' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Этап 5 · Тольятти')
   await expect.poll(() => racesOnServer(page)).toContain('Этап 5 · Тольятти')
@@ -235,6 +236,56 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await expect
     .poll(async () => (await (await page.request.get(`/api/races/${raceId}/qualification_files`)).json()).files.length)
     .toBe(1)
+
+  // The pits. Before the start the corridors get their unknown karts by a long press.
+  await page.getByRole('tab', { name: 'Пит-стопы' }).click()
+  const corridors = page.getByTestId('corridor')
+  const queue = (lane: number) => corridors.nth(lane).getByTestId('corridor-kart')
+  await expect(corridors).toHaveCount(2)
+  await expect(page.getByTestId('pit-kart')).toHaveCount(13)
+
+  const longPress = async (lane: number) => {
+    const box = (await corridors.nth(lane).boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.waitForTimeout(700)
+    await page.mouse.up()
+    await page.getByRole('menuitem', { name: 'Добавить неизвестную тачку' }).click()
+  }
+  for (const lane of [0, 0, 1, 1]) await longPress(lane)
+  await expect(queue(0)).toHaveText(['?', '?'])
+  await expect(queue(1)).toHaveText(['?', '?'])
+
+  // A kart dragged into a corridor joins its end, and the one at the front goes out.
+  const dragInto = async (kart: string, lane: number) => {
+    const from = (await page.getByRole('button', { name: `Карт ${kart}`, exact: true }).boundingBox())!
+    const to = (await corridors.nth(lane).boundingBox())!
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 })
+    await page.mouse.up()
+  }
+  // Each drop rearranges the karts below: the next one is picked once the last has landed.
+  await dragInto('1', 1)
+  await expect(queue(1)).toHaveText(['?', '1'])
+  await dragInto('5', 1)
+  await expect(queue(1)).toHaveText(['1', '5'])
+  await dragInto('9', 1)
+  await expect(queue(1)).toHaveText(['5', '9'])
+  await expect(page.getByRole('button', { name: 'Карт 1', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Карт 9', exact: true })).toHaveCount(0)
+
+  // Undone back to the very first move, done again, and all of it kept through a restart.
+  await page.getByRole('button', { name: 'Отменить' }).click()
+  await expect(queue(1)).toHaveText(['1', '5'])
+  for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Отменить' }).click()
+  await expect(page.getByRole('button', { name: 'Отменить' })).toBeDisabled()
+  await expect(queue(0)).toHaveCount(0)
+  for (let i = 0; i < 7; i++) await page.getByRole('button', { name: 'Вернуть' }).click()
+  await expect(queue(1)).toHaveText(['5', '9'])
+  await page.reload()
+  await expect(queue(0)).toHaveText(['?', '?'])
+  await expect(queue(1)).toHaveText(['5', '9'])
 })
 
 test('a database that cannot be opened leaves a way out, not a blank screen', async ({ page, context }) => {
