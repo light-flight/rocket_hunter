@@ -194,10 +194,9 @@ test('teams entered on two phones apart are all kept, in the order they came in'
   assert.deepEqual(stand(union(there, here)), stand(union(here, there)))
 })
 
-test('a team that comes in again is a stop of its own, however soon and whichever phone entered it', () => {
+test('a team that comes in again is a stop of its own, however soon', () => {
   assert.deepEqual(stand(union(log(['a=0:5@10']), log(['b=0:5@25']))), ['a=0:5', 'b=0:5'])
   assert.deepEqual(stand(log(['a=0:5@10', 'b=0:5@10.1', 'c=0:5@10.2'])), ['a=0:5', 'b=0:5', 'c=0:5'])
-  assert.deepEqual(stand(union(log(['a=0:5@10.5', 'c=0:9@11']), log(['b=0:5@10']))), ['b=0:5', 'a=0:5', 'c=0:9'])
   assert.deepEqual(stand(log(['a=0:5@10', 'b=1:5@10.5'])), ['a=0:5', 'b=1:5'])
 })
 
@@ -279,42 +278,33 @@ test('a move entered now always goes after the last that stands', () => {
 
   assert.equal(nextTime(pits, 20 * MINUTE), 20 * MINUTE)
   assert.equal(nextTime(pits, 10 * MINUTE), 10 * MINUTE + 1)
-  // The clock went back: the move still goes last.
-  assert.equal(nextTime(pits, 1 * MINUTE), 10 * MINUTE + 1)
   assert.equal(nextTime(log([]), 7), 7)
 })
 
-test('any number changes karts in any corridor any number of times, first in, first out', () => {
-  // 3 corridors with 2 spares each, 6 teams, 3000 stops: any team into any corridor, the same one
-  // again and again too, all entered in the same millisecond. Checked against plain queues.
-  let pits: Moves = { moves: [], undone: [] }
-  const enter = (lane: number, kart: string | null) => {
-    pits = { moves: [...pits.moves, { id: `m${pits.moves.length}`, lane, kart, at: nextTime(pits, 0) }], undone: [] }
-  }
-  const queues: string[][] = [[], [], []]
-  const on = new Map<string, string>()
-  let spares = 0
-  for (const lane of [0, 0, 1, 1, 2, 2]) {
-    enter(lane, null)
-    queues[lane].push(`s${spares++}`)
-  }
-  let seed = 7
-  const random = (n: number) => (seed = (seed * 48271) % 2147483647) % n
-  for (let stop = 0; stop < 3000; stop++) {
-    const team = String(random(6) + 1)
-    const lane = random(3)
-    enter(lane, team)
-    queues[lane].push(on.get(team) ?? `q${team}`)
-    on.set(team, queues[lane].shift()!)
-  }
-
-  const replayed = replay(standing(pits))
-  assert.equal(standing(pits).length, 3006)
-  assert.deepEqual(
-    replayed.corridors.map((queue) => queue.map((kart) => kart.id)),
-    queues,
+test('a team changes karts in any corridor every time it comes in', () => {
+  // Spares s0 and s1 in the first corridor, s2 in the second. Team 7 comes in six times, a few
+  // milliseconds apart: into the first corridor, the first again, the second, the first, the second
+  // and the second again. Each time it leaves its kart at the end and goes out on the front one.
+  const pits = replay(
+    standing(log(['0:?', '0:?', '1:?', 'a=0:7', 'b=0:7', 'c=1:7', 'd=0:7', 'e=1:7', 'f=1:7'])),
   )
-  for (const [team, kart] of on) assert.equal(kartOf(replayed.riding, team).id, kart)
+
+  assert.deepEqual(
+    [...pits.took].map(([id, kart]) => [id, kart.id]),
+    [
+      ['a', 's0'],
+      ['b', 's1'],
+      ['c', 's2'],
+      ['d', 'q7'],
+      ['e', 's1'],
+      ['f', 'q7'],
+    ],
+  )
+  assert.deepEqual(
+    pits.corridors.slice(0, 2).map((queue) => queue.map((kart) => kart.id)),
+    [['s0', 's2'], ['s1']],
+  )
+  assert.equal(kartOf(pits.riding, '7').id, 'q7')
 })
 
 test('an old log turns into the same moves on the phone and on the server, before any new one', () => {

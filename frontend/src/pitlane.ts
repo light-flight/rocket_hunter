@@ -61,7 +61,7 @@ export function lastMove(log: Moves): PitMove | null {
 }
 
 // The time for a move entered now: now, but never before the last move that stands, so a move
-// entered always goes last, whatever the clock does.
+// entered always goes last.
 export function nextTime(log: Moves, now: number): number {
   const last = standing(log).at(-1)?.at
   return last !== undefined && last >= now ? last + 1 : now
