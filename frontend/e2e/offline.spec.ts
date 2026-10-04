@@ -139,12 +139,13 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
   await expect(rows.first()).not.toContainText('ждёт сети')
   expect(await racesOnServer(page)).toEqual(['Этап 2', 'Этап 1 · Крылатское'])
 
-  await rows.first().click()
-  await page.getByRole('button', { name: 'Изменить' }).click()
+  // A race is renamed from the list, by the ⋯ of its row.
+  await page.getByRole('button', { name: 'Ещё: Этап 2' }).click()
+  await page.getByRole('menuitem', { name: 'Изменить название' }).click()
   await expect(field).toHaveValue('Этап 2')
   await field.fill('Этап 2 · Сочи')
   await page.getByRole('button', { name: 'Сохранить' }).click()
-  await expect(raceName).toHaveText('Этап 2 · Сочи')
+  await expect(rows.first()).toContainText('Этап 2 · Сочи')
   await expect.poll(() => racesOnServer(page)).toEqual(['Этап 2 · Сочи', 'Этап 1 · Крылатское'])
 
   // A race made on another phone of the team arrives the next time the app opens.
@@ -268,7 +269,8 @@ test('keeps qualification protocols without a network and ranks the karts once t
 
   // The screen under a sheet stays where it was: Safari on iPhone would scroll it under an open
   // window when a finger moves on the window. Nothing scrolls it while the sheet is up, and it is
-  // where it was once the sheet is gone.
+  // where it was once the sheet is gone. A shorter screen, so that the table is longer than it.
+  await page.setViewportSize({ width: 412, height: 640 })
   await page.evaluate(() => window.scrollTo(0, 100))
   const scrolled = await page.evaluate(() => window.scrollY)
   expect(scrolled).toBeGreaterThan(0)

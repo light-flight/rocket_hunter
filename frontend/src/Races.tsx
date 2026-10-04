@@ -10,7 +10,7 @@ import { ACCEPT, addFiles, syncFiles, useFiles, useKarts } from './qualification
 import { cleanName, createRace, NAME_LIMIT, type Race, updateRace, useRaces, useRaceSync } from './races.ts'
 import { StorageTrouble } from './Trouble.tsx'
 import { watchRaces } from './watch.ts'
-import { ActionArea, BackLink, ChevronRight, MainAction, NotSent, Paperclip, Plus, TextField } from './ui.tsx'
+import { ActionArea, BackLink, MainAction, More, NotSent, Paperclip, Plus, SHEET, TextField } from './ui.tsx'
 
 // The app after signing in. All work is done inside one race; the app opens in the race
 // chosen last, and the list of races is one step back from it.
@@ -43,6 +43,9 @@ export function Races({ user, auth }: RacesProps) {
   const { sync, synced } = useRaceSync(auth.check, auth.expired)
   const [selectedId, setSelectedId] = useState(storedSelection)
   const [screen, setScreen] = useState<Screen>('race')
+  // The race renamed from the list, by its ⋯ menu.
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const editing = races?.find((race) => race.id === editingId)
   // A race removed on the server leaves the list, and the app goes back to it.
   const selected = races?.find((race) => race.id === selectedId)
   // The files of the race open now, and of this weekend's, are kept on the phone.
@@ -67,9 +70,9 @@ export function Races({ user, auth }: RacesProps) {
   }
 
   async function edit(name: string) {
-    if (!selected) return
-    await updateRace(selected.id, name)
-    setScreen('race')
+    if (!editing) return
+    await updateRace(editing.id, name)
+    setScreen('list')
     sync()
   }
 
@@ -89,14 +92,14 @@ export function Races({ user, auth }: RacesProps) {
       />
     )
   }
-  if (screen === 'edit' && selected) {
+  if (screen === 'edit' && editing) {
     return (
       <RaceForm
         title="Изменить гонку"
         action="Сохранить"
-        initial={selected}
+        initial={editing}
         onSubmit={edit}
-        onCancel={() => setScreen('race')}
+        onCancel={() => setScreen('list')}
       />
     )
   }
@@ -105,7 +108,6 @@ export function Races({ user, auth }: RacesProps) {
       <RaceScreen
         race={selected}
         onBack={() => setScreen('list')}
-        onEdit={() => setScreen('edit')}
         onFilesAdded={sync}
         onSignedOut={auth.check}
       />
@@ -117,6 +119,10 @@ export function Races({ user, auth }: RacesProps) {
       selectedId={selected?.id}
       onOpen={open}
       onNew={() => setScreen('new')}
+      onEdit={(id) => {
+        setEditingId(id)
+        setScreen('edit')
+      }}
       user={user}
       auth={auth}
     />
@@ -272,12 +278,13 @@ type RaceListProps = {
   selectedId: string | undefined
   onOpen: (id: string) => void
   onNew: () => void
+  onEdit: (id: string) => void
   user: User
   auth: Auth
 }
 
 // Every race of the team, newest first: a new one each weekend.
-function RaceList({ races, selectedId, onOpen, onNew, user, auth }: RaceListProps) {
+function RaceList({ races, selectedId, onOpen, onNew, onEdit, user, auth }: RaceListProps) {
   const [menu, setMenu] = useState(false)
 
   return (
@@ -298,11 +305,11 @@ function RaceList({ races, selectedId, onOpen, onNew, user, auth }: RaceListProp
 
       <ul role="list" className="mt-3 flex flex-col">
         {races.map((race) => (
-          <li key={race.id}>
+          <li key={race.id} className="relative flex items-center gap-1 border-b border-control">
             <button
               type="button"
               onClick={() => onOpen(race.id)}
-              className="flex min-h-18 w-full items-center gap-3 border-b border-control py-3 text-left active:opacity-70"
+              className="flex min-h-18 min-w-0 flex-1 items-center py-3 text-left active:opacity-70"
             >
               <span className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="text-name font-semibold break-words">{race.name}</span>
@@ -319,8 +326,8 @@ function RaceList({ races, selectedId, onOpen, onNew, user, auth }: RaceListProp
                   )}
                 </span>
               </span>
-              <ChevronRight />
             </button>
+            <RaceMore race={race} onEdit={() => onEdit(race.id)} />
           </li>
         ))}
       </ul>
@@ -338,10 +345,62 @@ function RaceList({ races, selectedId, onOpen, onNew, user, auth }: RaceListProp
   )
 }
 
+// The rare things done to a race, in a menu by its row: for now, a new name.
+function RaceMore({ race, onEdit }: { race: Race; onEdit: () => void }) {
+  const [open, setOpen] = useState(false)
+  const key = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const opener = key.current
+    const close = (event: KeyboardEvent) => event.key === 'Escape' && setOpen(false)
+    window.addEventListener('keydown', close)
+    return () => {
+      window.removeEventListener('keydown', close)
+      // Closed whichever way: the focus goes back to the key that opened it, not to the top of the page.
+      opener?.focus()
+    }
+  }, [open])
+
+  return (
+    <>
+      <button
+        ref={key}
+        type="button"
+        aria-label={`Ещё: ${race.name}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+        className="-mr-2.5 flex size-11 shrink-0 items-center justify-center text-fg-2 active:opacity-70"
+      >
+        <More />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40 bg-dim" onClick={() => setOpen(false)} />
+          <div role="menu" aria-label={race.name} className={`absolute top-full right-0 z-50 -mt-2 w-65 overflow-hidden ${SHEET}`}>
+            <button
+              type="button"
+              role="menuitem"
+              autoFocus
+              onClick={() => {
+                setOpen(false)
+                onEdit()
+              }}
+              className="flex h-14 w-full items-center px-4 text-left text-name active:opacity-70"
+            >
+              Изменить название
+            </button>
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
 type RaceScreenProps = {
   race: Race
   onBack: () => void
-  onEdit: () => void
   onFilesAdded: () => void
   onSignedOut: () => void
 }
@@ -357,7 +416,7 @@ const SLOW_POLL_MS = 30_000
 // Inside a race. Before anything else, its qualification: the protocols to read and the karts
 // they rank. Once there are karts, or its pits are set up, the race opens in its pits. The pits
 // work before any protocol too: the numbers are typed in as the teams come in.
-function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScreenProps) {
+function RaceScreen({ race, onBack, onFilesAdded, onSignedOut }: RaceScreenProps) {
   const files = useFiles(race.id)
   const karts = useKarts(race.id)
   const pitLog = usePitLog(race.id)
@@ -408,8 +467,6 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
   }
 
   const empty = files?.length === 0
-  // In the pits every bit of the screen goes to the corridors and the karts: the race is named
-  // by the way back.
   const pits = tab === 'pits'
   // A blink of the qualification before the pits is worse than a blink of nothing.
   if (files === undefined || tab === null) return <div className="flex flex-1 flex-col" />
@@ -417,28 +474,12 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
   return (
     <div className="flex flex-1 flex-col">
       {!pits && <Palm size={empty ? undefined : 'short'} />}
-      {pits ? (
-        <>
-          <BackLink onClick={onBack} arrow label="Все гонки">
-            <span className="truncate">{race.name}</span>
-          </BackLink>
-          <h1 className="sr-only">{race.name}</h1>
-        </>
-      ) : (
-        <>
-          <BackLink onClick={onBack} arrow>
-            Все гонки
-          </BackLink>
-          <h1 className="mt-2 text-title font-bold break-words">{race.name}</h1>
-          <button
-            type="button"
-            onClick={onEdit}
-            className="-ml-1 flex h-11 items-center self-start px-1 text-sm text-fg-3 underline underline-offset-3 active:opacity-70"
-          >
-            Изменить
-          </button>
-        </>
-      )}
+      {/* Every bit of the screen goes to the work: the race is named by the way back, the same on
+          both tabs, so the tabs stay in place. It is renamed from the list of races. */}
+      <BackLink onClick={onBack} arrow label="Все гонки">
+        <span className="truncate">{race.name}</span>
+      </BackLink>
+      <h1 className="sr-only">{race.name}</h1>
 
       {/* The phone's own picker: Photos, the camera and Files. */}
       <input ref={picker} type="file" multiple accept={ACCEPT} onChange={pick} hidden />
