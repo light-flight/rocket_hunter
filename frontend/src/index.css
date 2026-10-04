@@ -134,8 +134,8 @@
   }
 
   /* The light look: a pale ground, white sheets and dark text. The pink, the action and the pace of
-     the karts stay as they are. Muted text and warnings are darker than in the dark look, to read
-     at 5:1 and more on the ground and on the keys. */
+     the karts stay as they are. Muted text and warnings are darker than in the dark look: 5.6:1 and
+     more on the ground, and about 5:1 on the keys. */
   :root[data-theme="light"] {
     color-scheme: light;
     --color-ground: #f2f2f5;

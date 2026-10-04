@@ -13,10 +13,11 @@ export const THEMES: { theme: Theme; label: string }[] = [
 ]
 
 const KEY = 'rocket-hunter.theme'
-// The ground of each look: what a phone paints around the app (theme-color), and the same dimmed as
-// under a sheet (--color-scrim), so that the status bar of an Android phone dims with the screen.
-const GROUND = { dark: '#060607', light: '#f2f2f5' }
-const DIMMED = { dark: '#020203', light: '#a5a5a7' }
+// The ground of each look: what a phone paints around the app (theme-color). Under each sheet open
+// it is dimmed by the sheet's scrim (--color-scrim), so the status bar of an Android phone dims with
+// the screen.
+const GROUND = { dark: [6, 6, 7], light: [242, 242, 245] }
+const SCRIM = { dark: 0.6, light: 0.32 }
 
 const listeners = new Set<() => void>()
 let chosen: Theme = stored()
@@ -38,7 +39,9 @@ const phoneIsLight = () => window.matchMedia('(prefers-color-scheme: light)').ma
 function apply() {
   const look = chosen === 'system' ? (phoneIsLight() ? 'light' : 'dark') : chosen
   document.documentElement.dataset.theme = look
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', (dims > 0 ? DIMMED : GROUND)[look])
+  const left = (1 - SCRIM[look]) ** dims
+  const colour = GROUND[look].map((channel) => Math.round(channel * left).toString(16).padStart(2, '0')).join('')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', `#${colour}`)
 }
 
 // A sheet opened over the screen, or closed.
