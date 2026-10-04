@@ -6,6 +6,7 @@ import {
   fromOldLog,
   isOld,
   kartOf,
+  lanesOf,
   lastMove,
   nextTime,
   paceOf,
@@ -96,6 +97,26 @@ test('every team stays on the track, whichever corridor it came through', () => 
 
   assert.deepEqual(teams([], stops), ['1', '5', '9'])
   assert.deepEqual(teams(['11', '2', '5', '12A', '12'], stops), ['1', '2', '5', '9', '11', '12', '12A'])
+})
+
+test('each stop tells the kart the team went out on', () => {
+  const pits = replay(moves('a=0:?', 'b=0:?', 'c=0:1', 'd=0:5', 'e=0:1'))
+
+  assert.deepEqual(
+    [...pits.took].map(([id, kart]) => [id, kart.id]),
+    [
+      ['c', 's0'],
+      ['d', 's1'],
+      ['e', 'q1'],
+    ],
+  )
+})
+
+test('the corridors are the number chosen, or with none chosen the ones the moves use', () => {
+  assert.equal(lanesOf(2, []), 2)
+  assert.equal(lanesOf(2, moves('2:5')), 2)
+  assert.equal(lanesOf(null, []), null)
+  assert.equal(lanesOf(null, moves('0:?', '2:5')), 3)
 })
 
 test('in an empty corridor the driver gets back into the same kart', () => {
