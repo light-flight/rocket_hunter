@@ -476,7 +476,7 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
           {tab !== 'pits' ? (
             <>
               <div role="tabpanel" aria-label="Квалификация" className="mt-3">
-                <Qualification files={files} karts={karts ?? []} onSignedOut={onSignedOut} />
+                <Qualification raceId={race.id} files={files} karts={karts ?? []} onSignedOut={onSignedOut} />
               </div>
               {/* Stays in reach when the list is longer than the screen. */}
               <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+1rem)] mt-auto pt-6">

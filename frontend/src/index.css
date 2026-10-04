@@ -63,6 +63,40 @@
       opacity: 1;
     }
   }
+
+  /* The bar of the protocols on their way: it opens, light runs along the leg going now, and once
+     everything is read it stays full for a moment and folds away. */
+  --animate-bar-in: bar-in 0.3s ease-out;
+  --animate-bar-out: bar-out 1.5s ease-in forwards;
+  --animate-sheen: sheen 1.6s ease-in-out infinite;
+
+  @keyframes bar-in {
+    from {
+      grid-template-rows: 0fr;
+      opacity: 0;
+    }
+  }
+
+  @keyframes bar-out {
+    0%,
+    65% {
+      grid-template-rows: 1fr;
+      opacity: 1;
+    }
+    100% {
+      grid-template-rows: 0fr;
+      opacity: 0;
+    }
+  }
+
+  @keyframes sheen {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(250%);
+    }
+  }
 }
 
 @layer base {

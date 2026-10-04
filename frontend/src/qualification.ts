@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { api, upload } from './api.ts'
 import { db, type Kart, type QualificationFile, type Upload } from './db.ts'
 import { newId } from './id.ts'
+import { filesSeen, readStarted, uploadEnded, uploadProgress, uploadStarted } from './progress.ts'
 import { watchedRaces } from './watch.ts'
 
 export type { Kart, QualificationFile }
@@ -101,6 +102,7 @@ export async function rereadFile(file: QualificationFile, onSignedOut: () => voi
 
   const server = await serverFile(response)
   if (server) {
+    if (server.status === 'waiting' || server.status === 'reading') readStarted(file.id)
     await db.transaction('rw', db.files, async () => {
       // Taken out while the request was on its way: that wins.
       if ((await db.files.get(file.id))?.deleted === 0) await db.files.put(fromServer(file.raceId, server))
@@ -222,7 +224,11 @@ async function exchange(onSignedOut: () => void): Promise<void> {
     form.append('file', new Blob([bytes.data], { type: bytes.type }), file.name)
     form.append('name', file.name)
     form.append('added_at', new Date(file.addedAt).toISOString())
-    const response = await upload(`/races/${file.raceId}/qualification_files/${file.id}`, form)
+    uploadStarted(file.id, bytes.data.byteLength)
+    const response = await upload(`/races/${file.raceId}/qualification_files/${file.id}`, form, (part) =>
+      uploadProgress(file.id, part),
+    )
+    uploadEnded(file.id)
     // No network, or too slow for this file: the lists below still come.
     if (response === null) {
       timeouts.set(file.id, (timeouts.get(file.id) ?? 0) + 1)
@@ -242,6 +248,8 @@ async function exchange(onSignedOut: () => void): Promise<void> {
       continue
     }
 
+    // The model has it from now: how long it takes tells how long the next one will.
+    if (server.status === 'waiting' || server.status === 'reading') readStarted(file.id)
     await db.transaction('rw', db.files, db.uploads, async () => {
       const now = await db.files.get(file.id)
       if (!now) return
@@ -262,6 +270,7 @@ async function exchange(onSignedOut: () => void): Promise<void> {
     if (!Array.isArray(body.karts) || !body.karts.every(isKart)) continue
     const files = body.files
     const karts = body.karts
+    filesSeen(files)
 
     await db.transaction('rw', db.files, db.uploads, db.rankings, async () => {
       await db.rankings.put({ raceId, karts })
