@@ -1,7 +1,7 @@
 require "test_helper"
 
 class PitLogTest < ActiveSupport::TestCase
-  setup { @race = Race.create!(name: "Этап 4", lanes: 2) }
+  setup { @race = Race.create!(name: "Этап 4") }
 
   # A move written short: "a=1:5@12" is move a, team 5 into the second corridor, entered at 12;
   # "s=0:?@1" a spare kart put into the first.
@@ -114,5 +114,105 @@ class PitLogTest < ActiveSupport::TestCase
     pits = log([])
     pits.take([], [ "a b" ])
     assert_not pits.valid?
+  end
+
+  test "has no corridors until a phone chooses them" do
+    pits = log([])
+
+    assert_equal [ nil, 0 ], [ pits.lanes, pits.lanes_at ]
+    assert pits.valid?
+  end
+
+  test "keeps one to three corridors, or none, and when they were chosen" do
+    [ 1, 2, 3, nil ].each { assert @race.build_pit_log(lanes: it, lanes_at: 1_791_028_800_000).valid?, it.inspect }
+    assert @race.build_pit_log(lanes: 2, lanes_at: PitLog::LAST_AT).valid?
+
+    [ { lanes: 0 }, { lanes: 4 }, { lanes: 2.5 }, { lanes: "два" }, { lanes_at: -1 }, { lanes_at: 1.5 }, { lanes_at: nil },
+      { lanes_at: "сейчас" }, { lanes_at: PitLog::LAST_AT + 1 } ].each do |pits|
+      assert_not @race.build_pit_log(lanes: 2, lanes_at: 1, **pits).valid?, pits.inspect
+    end
+  end
+
+  test "of two choices of the corridors the later one stands, whichever comes first" do
+    pits = log([])
+    pits.take_lanes(2, 100)
+    assert_equal [ 2, 100 ], [ pits.lanes, pits.lanes_at ]
+
+    # Chosen earlier on another phone that had no network, or chosen at the same moment.
+    pits.take_lanes(3, 99)
+    pits.take_lanes(1, 100)
+    assert_equal [ 2, 100 ], [ pits.lanes, pits.lanes_at ]
+
+    pits.take_lanes(3, 101)
+    assert_equal [ 3, 101 ], [ pits.lanes, pits.lanes_at ]
+    assert pits.valid?
+  end
+
+  test "the pits started over have no corridors until they are chosen again" do
+    pits = log([ move("a=1:5@10") ], [ "a" ])
+    pits.lanes, pits.lanes_at = 2, 100
+
+    pits.take_lanes(nil, 200)
+    assert_equal [ nil, 200 ], [ pits.lanes, pits.lanes_at ]
+    assert pits.valid?
+
+    pits.take_lanes(1, 201)
+    assert_equal [ 1, 201 ], [ pits.lanes, pits.lanes_at ]
+  end
+
+  test "the corridors a race had before they were chosen in the pits give way to any choice while nothing stands" do
+    pits = log([])
+    pits.lanes = 2
+
+    pits.take_lanes(3, 0)
+    assert_equal [ 2, 0 ], [ pits.lanes, pits.lanes_at ]
+    pits.take_lanes(1, 1)
+    assert_equal [ 1, 1 ], [ pits.lanes, pits.lanes_at ]
+  end
+
+  test "once anything stands, only starting the pits over changes the corridors" do
+    pits = log([ move("a=1:5@10"), move("s=0:?@11") ], [ "s" ])
+    pits.lanes, pits.lanes_at = 2, 100
+
+    # Chosen later on a phone that had not heard of the race, even with a stop of its own.
+    pits.take_lanes(1, 200)
+    pits.take([ move("b=0:7@210") ], [])
+    pits.take_lanes(3, 200, [ move("b=0:7@210") ])
+    assert_equal [ 2, 100 ], [ pits.lanes, pits.lanes_at ]
+
+    pits.take_lanes(nil, 300)
+    assert_equal [ nil, 300 ], [ pits.lanes, pits.lanes_at ]
+    # A, entered with no network and sent after, still stands: the corridors chosen next count.
+    pits.take_lanes(1, 400)
+    assert_equal [ 1, 400 ], [ pits.lanes, pits.lanes_at ]
+  end
+
+  test "a choice sent with the undo of every stop and with stops entered in it is taken" do
+    pits = log([ move("a=1:5@10") ])
+    pits.lanes, pits.lanes_at = 2, 100
+    spare = move("c=2:?@300")
+
+    pits.take([ spare ], [ "a" ])
+    pits.take_lanes(3, 250, [ spare ])
+    assert_equal [ 3, 250 ], [ pits.lanes, pits.lanes_at ]
+    assert pits.valid?
+  end
+
+  test "the corridors a race had before they were chosen in the pits stay once anything stands" do
+    pits = log([ move("a=1:5@10") ])
+    pits.lanes = 2
+
+    pits.take_lanes(1, 1)
+    assert_equal [ 2, 0 ], [ pits.lanes, pits.lanes_at ]
+  end
+
+  test "a choice of the corridors that is not one is taken whatever its time, so the log is refused" do
+    [ [ 4, 50 ], [ 0, 200 ], [ 2, -1 ], [ nil, -1 ], [ 2, PitLog::LAST_AT + 1 ] ].each do |lanes, at|
+      pits = log([])
+      pits.lanes, pits.lanes_at = 2, 100
+      pits.take_lanes(lanes, at)
+
+      assert_not pits.valid?, [ lanes, at ].inspect
+    end
   end
 end

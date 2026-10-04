@@ -10,11 +10,13 @@ import {
   lastMove,
   nextTime,
   paceOf,
+  replaces,
   replay,
   standing,
   teamNumber,
   teams,
   union,
+  untimed,
 } from './pitlane.ts'
 
 const MINUTE = 60_000
@@ -117,6 +119,27 @@ test('the corridors are the number chosen, or with none chosen the ones the move
   assert.equal(lanesOf(2, moves('2:5')), 2)
   assert.equal(lanesOf(null, []), null)
   assert.equal(lanesOf(null, moves('0:?', '2:5')), 3)
+})
+
+test('of two choices of the corridors the later stands while nothing stands in the pits', () => {
+  // Two phones on the setup at once, or one choosing after the pits were started over.
+  assert.equal(replaces({ lanes: 1, at: 200 }, { lanes: 2, at: 100 }, false), true)
+  assert.equal(replaces({ lanes: 1, at: 200 }, { lanes: null, at: 100 }, false), true)
+  assert.equal(replaces({ lanes: 1, at: 100 }, { lanes: 2, at: 200 }, false), false)
+  // Chosen at the same moment: the one there stays, so every phone ends up with the same.
+  assert.equal(replaces({ lanes: 1, at: 100 }, { lanes: 2, at: 100 }, false), false)
+})
+
+test('once anything stands, only starting the pits over changes the corridors', () => {
+  // A phone that had not heard of the race chose later: the stops stay in their corridors.
+  assert.equal(replaces({ lanes: 1, at: 200 }, { lanes: 2, at: 100 }, true), false)
+  assert.equal(replaces({ lanes: null, at: 200 }, { lanes: 2, at: 100 }, true), true)
+  assert.equal(replaces({ lanes: null, at: 100 }, { lanes: 2, at: 200 }, true), false)
+  // Started over, then moves came from a phone that had no network: the corridors chosen next count.
+  assert.equal(replaces({ lanes: 2, at: 300 }, { lanes: null, at: 200 }, true), true)
+  // The corridors a race had before they were chosen in the pits stay too.
+  assert.equal(replaces({ lanes: 3, at: 1 }, { lanes: 2, at: 0 }, true), false)
+  assert.equal(replaces({ lanes: 3, at: 1 }, { lanes: 2, at: 0 }, false), true)
 })
 
 test('in an empty corridor the driver gets back into the same kart', () => {
@@ -272,6 +295,15 @@ test('an old log turns into the same moves on the phone and on the server, befor
   assert.ok(!isOld({ id: 'L1-0-5', lane: 0, kart: '5', at: 1 }))
   const later = { moves: [{ id: 'n', lane: 0, kart: '9', at: Date.UTC(2026, 9, 3) }], undone: [] }
   assert.deepEqual(stand(union(later, { moves: turned, undone: [] })), ['L0-0-S=0:?', 'L1-0-5=0:5', 'n=0:9'])
+})
+
+test('a move of an old log has no real time of entry, nor has the same move entered again by «Вернуть»', () => {
+  const old = fromOldLog(Array.from({ length: 25_000 }, () => ({ lane: 0, kart: '5' })), 25_000)
+
+  assert.ok(old.every(untimed))
+  // A new id, the place it had.
+  assert.ok(untimed({ ...old[2], id: '9f1c2d3e-4b5a-6789-0abc-def012345678' }))
+  assert.ok(!untimed({ id: 'n', lane: 0, kart: '9', at: Date.UTC(2026, 9, 3, 12, 4, 37) }))
 })
 
 test('every stop of an old log stands, a team coming into the same corridor again too', () => {

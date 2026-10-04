@@ -1,4 +1,12 @@
-import { type APIRequestContext, type BrowserContext, expect, type Page, test } from '@playwright/test'
+import {
+  type APIRequestContext,
+  type BrowserContext,
+  devices,
+  expect,
+  type Locator,
+  type Page,
+  test,
+} from '@playwright/test'
 
 // Does what the manager does in Telegram, through the real webhook: taps the link in the app,
 // which opens the bot, then presses «Войти». The sender is the manager "one" from the fixtures;
@@ -52,11 +60,6 @@ async function racesOnServer(page: Page): Promise<string[]> {
   return (await response.json()).races.map((race: { name: string }) => race.name)
 }
 
-async function lanesOnServer(page: Page, name: string): Promise<number | undefined> {
-  const response = await page.request.get('/api/races')
-  return (await response.json()).races.find((race: { name: string }) => race.name === name)?.lanes
-}
-
 test('signs in, keeps races without a network and sends them later', async ({ page, context, request }) => {
   await asInstalled(context)
   const signInButton = page.getByRole('link', { name: 'Войти через Telegram' })
@@ -95,16 +98,14 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
   await expect(sessionExpired).toHaveCount(0)
   expect(failedRequests.filter((path) => !path.startsWith('/api/'))).toEqual([])
 
-  // A race made without a network is there at once and waits for one.
+  // A race made without a network is there at once and waits for one. A race is its name: the
+  // corridors are chosen in its pits.
   await page.getByRole('button', { name: 'Все гонки' }).click()
   await page.getByRole('button', { name: 'Новая гонка' }).click()
   await field.fill('Этап 2')
-  await expect(page.getByRole('radio', { name: '1 коридор' })).toBeChecked()
-  await page.getByRole('radio', { name: '2 коридора' }).click()
-  await expect(page.getByRole('radio', { name: '2 коридора' })).toBeChecked()
+  await expect(page.getByRole('radio')).toHaveCount(0)
   await field.press('Enter')
   await expect(raceName).toHaveText('Этап 2')
-  await expect(page.getByTestId('race-lanes')).toHaveText('2 коридора')
 
   // It outlives the app being closed, and the app opens in the race chosen last.
   await page.reload()
@@ -116,19 +117,14 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
   await context.setOffline(false)
   await expect(rows.first()).not.toContainText('ждёт сети')
   expect(await racesOnServer(page)).toEqual(['Этап 2', 'Этап 1 · Крылатское'])
-  expect(await lanesOnServer(page, 'Этап 2')).toBe(2)
 
   await rows.first().click()
   await page.getByRole('button', { name: 'Изменить' }).click()
   await expect(field).toHaveValue('Этап 2')
-  await expect(page.getByRole('radio', { name: '2 коридора' })).toBeChecked()
   await field.fill('Этап 2 · Сочи')
-  await page.getByRole('radio', { name: '1 коридор' }).click()
   await page.getByRole('button', { name: 'Сохранить' }).click()
   await expect(raceName).toHaveText('Этап 2 · Сочи')
-  await expect(page.getByTestId('race-lanes')).toHaveText('1 коридор')
   await expect.poll(() => racesOnServer(page)).toEqual(['Этап 2 · Сочи', 'Этап 1 · Крылатское'])
-  expect(await lanesOnServer(page, 'Этап 2 · Сочи')).toBe(1)
 
   // A race made on another phone of the team arrives the next time the app opens.
   await page.request.put('/api/races/0b5f6c1e-2a3d-4e5f-8a9b-0c1d2e3f4a5b', {
@@ -183,7 +179,10 @@ test('keeps qualification protocols without a network and ranks the karts once t
   page,
   context,
   request,
+  browser,
 }) => {
+  // What another phone does reaches the pits here with their poll, every 10 seconds.
+  test.slow()
   await asInstalled(context)
   await page.goto('/')
   await confirmInTelegram(page, request)
@@ -191,7 +190,6 @@ test('keeps qualification protocols without a network and ranks the karts once t
   // The races of the previous test are there: this one makes its own.
   await page.getByRole('button', { name: 'Новая гонка' }).click({ timeout: 10_000 })
   await page.getByLabel('Название гонки').fill('Этап 5 · Тольятти')
-  await page.getByRole('radio', { name: '2 коридора' }).click()
   await page.getByRole('button', { name: 'Создать гонку' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Этап 5 · Тольятти')
   await expect.poll(() => racesOnServer(page)).toContain('Этап 5 · Тольятти')
@@ -237,12 +235,38 @@ test('keeps qualification protocols without a network and ranks the karts once t
     .poll(async () => (await (await page.request.get(`/api/races/${raceId}/qualification_files`)).json()).files.length)
     .toBe(1)
 
-  // The pits. Before the start the corridors get their unknown karts by a long press.
+  // The pits. The first time they are opened they ask how many corridors the pit lane has, one
+  // unless told otherwise, and show nothing else until told.
   await page.getByRole('tab', { name: 'Пит-стопы' }).click()
+  const lanes = page.getByRole('radiogroup', { name: 'Сколько коридоров в пите?' })
   const corridors = page.getByTestId('corridor')
   const queue = (lane: number) => corridors.nth(lane).getByTestId('corridor-kart')
+  // The karts in a corridor, front first: 'q7' is the kart team 7 qualified on, 's2' the third spare.
+  const inCorridor = (lane: number) =>
+    queue(lane).evaluateAll((karts) => karts.map((kart) => kart.getAttribute('data-kart')))
   const grid = page.getByTestId('pit-kart')
   const team = (number: string) => page.getByRole('button', { name: `Номер ${number}`, exact: true })
+  const undo = page.getByRole('button', { name: 'Отменить' })
+  const redo = page.getByRole('button', { name: 'Вернуть' })
+  const more = page.getByRole('button', { name: 'Ещё' })
+  const done = page.getByRole('button', { name: 'Готово' })
+  await expect(lanes.getByRole('radio', { name: '1 коридор' })).toBeChecked()
+  await expect(corridors).toHaveCount(0)
+  await expect(grid).toHaveCount(0)
+  for (const key of [undo, redo, more, page.getByRole('button', { name: 'Журнал' })]) await expect(key).toHaveCount(0)
+
+  // The finger slides along the pictures of the pit lane, and the choice follows it.
+  const one = (await lanes.getByRole('radio', { name: '1 коридор' }).boundingBox())!
+  const two = (await lanes.getByRole('radio', { name: '2 коридора' }).boundingBox())!
+  await page.mouse.move(one.x + one.width / 2, one.y + one.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(two.x + two.width / 2, two.y + two.height / 2, { steps: 8 })
+  await page.mouse.up()
+  await expect(lanes.getByRole('radio', { name: '2 коридора' })).toBeChecked()
+  await done.click()
+
+  // Then the corridors, and below them every team of the qualification.
+  await expect(lanes).toHaveCount(0)
   await expect(corridors).toHaveCount(2)
   await expect(grid).toHaveCount(13)
 
@@ -253,6 +277,7 @@ test('keeps qualification protocols without a network and ranks the karts once t
   const kart9 = (await team('9').getAttribute('data-pace'))!
   for (const pace of [kart5, kart9]) expect(pace).toMatch(/^0\.\d+$/)
 
+  // Before the start the corridors get their spare karts by a long press.
   const longPress = async (lane: number) => {
     const box = (await corridors.nth(lane).boundingBox())!
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -262,8 +287,19 @@ test('keeps qualification protocols without a network and ranks the karts once t
     await page.getByRole('menuitem', { name: 'Добавить неизвестную тачку' }).click()
   }
   for (const lane of [0, 0, 1, 1]) await longPress(lane)
-  await expect(queue(0)).toHaveText(['?', '?'])
-  await expect(queue(1)).toHaveText(['?', '?'])
+  await expect.poll(() => inCorridor(0)).toEqual(['s0', 's1'])
+  await expect.poll(() => inCorridor(1)).toEqual(['s2', 's3'])
+
+  // A kart in a corridor has no number on it: the number went out on the kart at the front. One
+  // nobody knows the pace of has no colour and a dashed edge, and no «?» drawn on it.
+  const unknown = async (tile: Locator) => {
+    await expect(tile).toHaveAttribute('data-pace', 'unknown')
+    await expect(tile).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+    await expect(tile).toHaveCSS('outline-style', 'dashed')
+    expect(await tile.evaluate((element) => getComputedStyle(element, '::after').content)).toBe('none')
+  }
+  await expect(queue(0)).toHaveText(['', ''])
+  await unknown(queue(0).first())
 
   // A team dragged into a corridor leaves its kart at the end and goes out on the one at the front.
   const dragInto = async (number: string, lane: number) => {
@@ -276,24 +312,27 @@ test('keeps qualification protocols without a network and ranks the karts once t
   }
   // The next team is dragged once the last one has landed.
   await dragInto('1', 1)
-  await expect(queue(1)).toHaveText(['?', '1'])
+  await expect.poll(() => inCorridor(1)).toEqual(['s3', 'q1'])
   await dragInto('5', 1)
-  await expect(queue(1)).toHaveText(['1', '5'])
+  await expect.poll(() => inCorridor(1)).toEqual(['q1', 'q5'])
   await dragInto('9', 1)
-  await expect(queue(1)).toHaveText(['5', '9'])
-  // The karts 5 and 9 came on stay in the corridor with their pace. 9 went out on the kart of 1,
-  // the fastest, and 1 and 5 on spares nobody knows the pace of. Every team is still in the grid.
+  await expect.poll(() => inCorridor(1)).toEqual(['q5', 'q9'])
+  // The karts 5 and 9 came on stay in the corridor with their pace, and with no number. 9 went out
+  // on the kart of 1, the fastest, and 1 and 5 on spares nobody knows the pace of. Every team is
+  // still in the grid.
+  await expect(queue(1)).toHaveText(['', ''])
   await expect(queue(1).nth(0)).toHaveAttribute('data-pace', kart5)
   await expect(queue(1).nth(1)).toHaveAttribute('data-pace', kart9)
   await expect(grid).toHaveCount(13)
   await expect(page.getByRole('button', { name: 'Другой номер' })).toBeVisible()
   await expect(team('9')).toHaveAttribute('data-pace', '0')
-  await expect(team('1')).toHaveAttribute('data-pace', 'unknown')
+  await unknown(team('1'))
+  await expect(team('1')).toHaveText('1')
   await expect(team('5')).toHaveAttribute('data-pace', 'unknown')
 
   // A team that comes in again leaves the spare it was on at the end, and goes out on the next one.
   await dragInto('1', 0)
-  await expect(queue(0)).toHaveText(['?', '1'])
+  await expect.poll(() => inCorridor(0)).toEqual(['s1', 's2'])
   await expect(queue(0).nth(0)).toHaveAttribute('data-pace', 'unknown')
   await expect(queue(0).nth(1)).toHaveAttribute('data-pace', 'unknown')
   await expect(team('1')).toHaveAttribute('data-pace', 'unknown')
@@ -307,35 +346,35 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await number.fill('1234')
   await other.getByRole('button', { name: 'Коридор 1' }).click()
   await expect(other.getByRole('alert')).toHaveText('Номер — до трёх цифр, можно с буквой: 7, 12A')
-  await expect(queue(0)).toHaveText(['?', '1'])
+  await expect.poll(() => inCorridor(0)).toEqual(['s1', 's2'])
   await expect(grid).toHaveCount(13)
   await number.fill(' 07')
   await other.getByRole('button', { name: 'Коридор 1' }).click()
   await expect(other).toBeHidden()
   await expect(grid).toHaveCount(14)
   await expect(team('7')).toHaveAttribute('data-pace', 'unknown')
-  await expect(queue(0)).toHaveText(['1', '7'])
+  await expect.poll(() => inCorridor(0)).toEqual(['s2', 'q7'])
   await expect(queue(0).nth(1)).toHaveAttribute('data-pace', 'unknown')
 
   // Undone back to the very first move, done again, and all of it kept through a restart.
-  await page.getByRole('button', { name: 'Отменить' }).click()
-  await expect(queue(0)).toHaveText(['?', '1'])
-  for (let i = 0; i < 8; i++) await page.getByRole('button', { name: 'Отменить' }).click()
-  await expect(page.getByRole('button', { name: 'Отменить' })).toBeDisabled()
+  await undo.click()
+  await expect.poll(() => inCorridor(0)).toEqual(['s1', 's2'])
+  for (let i = 0; i < 8; i++) await undo.click()
+  await expect(undo).toBeDisabled()
   await expect(queue(0)).toHaveCount(0)
   await expect(team('9')).toHaveAttribute('data-pace', kart9)
-  for (let i = 0; i < 9; i++) await page.getByRole('button', { name: 'Вернуть' }).click()
-  await expect(queue(0)).toHaveText(['1', '7'])
-  await expect(queue(1)).toHaveText(['5', '9'])
+  for (let i = 0; i < 9; i++) await redo.click()
+  await expect.poll(() => inCorridor(0)).toEqual(['s2', 'q7'])
+  await expect.poll(() => inCorridor(1)).toEqual(['q5', 'q9'])
   await page.reload()
-  await expect(queue(0)).toHaveText(['1', '7'])
-  await expect(queue(1)).toHaveText(['5', '9'])
+  await expect.poll(() => inCorridor(0)).toEqual(['s2', 'q7'])
+  await expect.poll(() => inCorridor(1)).toEqual(['q5', 'q9'])
 
   // The server has the pits too, for the other phones of the team: every move entered on any phone,
-  // with its id and time, and the ids of the moves undone. The undo above undid 9 moves, and the
-  // redo entered them again as new ones.
+  // with its id and time, the ids of the moves undone, and the corridors. The undo above undid 9
+  // moves, and the redo entered them again as new ones.
   type Move = { id: string; lane: number; kart: string | null; at: number }
-  type PitLog = { moves: Move[]; undone: string[]; total: { moves: number; undone: number } }
+  type PitLog = { moves: Move[]; undone: string[]; total: { moves: number; undone: number }; lanes: number | null }
   const pitsOnServer = async (): Promise<PitLog> => (await page.request.get(`/api/races/${raceId}/pit_log`)).json()
   // What stands there, the way the phones work it out: the moves not undone, by the time they were
   // entered.
@@ -349,11 +388,38 @@ test('keeps qualification protocols without a network and ranks the karts once t
   const sendPits = (moves: Move[]) => page.request.put(`/api/races/${raceId}/pit_log`, { data: { pit_log: { moves } } })
   await expect.poll(async () => (await pitsOnServer()).total).toEqual({ moves: 18, undone: 9 })
   expect(await standingOnServer()).toHaveLength(9)
+  expect((await pitsOnServer()).lanes).toBe(2)
+
+  // The journal: which team came into which corridor, the last first, and when it was entered, to
+  // the second. The redo entered the moves again at the times they had.
+  const journal = page.getByRole('dialog', { name: 'Журнал' })
+  const entered = (stop: string) => new RegExp(`^\\d\\d:\\d\\d:\\d\\d\\s*${stop}$`)
+  await page.getByRole('button', { name: 'Журнал' }).click()
+  await expect(journal.getByRole('listitem')).toHaveText([
+    entered('Номер 7 → коридор 1'),
+    entered('Номер 1 → коридор 1'),
+    entered('Номер 9 → коридор 2'),
+    entered('Номер 5 → коридор 2'),
+    entered('Номер 1 → коридор 2'),
+    entered('Запасной карт → коридор 2'),
+    entered('Запасной карт → коридор 2'),
+    entered('Запасной карт → коридор 1'),
+    entered('Запасной карт → коридор 1'),
+  ])
+  // The time 7 was typed in, by the clock of the phone that entered it.
+  const seven = (await pitsOnServer()).moves.find((move) => move.kart === '7')!.at
+  const time = await page.evaluate(
+    (at) => new Date(at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    seven,
+  )
+  await expect(journal.getByRole('listitem').first()).toHaveText(new RegExp(`^${time}`))
+  await journal.getByRole('button', { name: 'Закрыть' }).click()
+  await expect(journal).toBeHidden()
 
   // Without a network an undo is kept here, and goes once the network is back.
   await context.setOffline(true)
-  await page.getByRole('button', { name: 'Отменить' }).click()
-  await expect(queue(0)).toHaveText(['?', '1'])
+  await undo.click()
+  await expect.poll(() => inCorridor(0)).toEqual(['s1', 's2'])
   await context.setOffline(false)
   await expect.poll(async () => (await standingOnServer()).length).toBe(8)
 
@@ -365,18 +431,18 @@ test('keeps qualification protocols without a network and ranks the karts once t
   expect((await sendPits([three])).status()).toBe(204)
   expect((await pitsOnServer()).total).toEqual(total)
   await page.reload()
-  await expect(queue(0)).toHaveText(['1', '3'])
-  await expect(queue(1)).toHaveText(['5', '9'])
+  await expect.poll(() => inCorridor(0)).toEqual(['s2', 'q3'])
+  await expect.poll(() => inCorridor(1)).toEqual(['q5', 'q9'])
 
   // Two phones enter at once: this one without a network, another one a moment later. Neither move
   // is lost once the network is back, and they stand in the order they were entered.
   await context.setOffline(true)
   await dragInto('11', 1)
-  await expect(queue(1)).toHaveText(['9', '11'])
+  await expect.poll(() => inCorridor(1)).toEqual(['q9', 'q11'])
   expect((await sendPits([{ id: 'e2e-thirteen', lane: 1, kart: '13', at: Date.now() + 1000 }])).status()).toBe(204)
   await context.setOffline(false)
   // 11 went out on the kart 5 had left, and 13 after it on the one 9 had left.
-  await expect(queue(1)).toHaveText(['11', '13'])
+  await expect.poll(() => inCorridor(1)).toEqual(['q11', 'q13'])
   await expect.poll(async () => (await standingOnServer()).slice(-2)).toEqual([
     [1, '11'],
     [1, '13'],
@@ -397,23 +463,131 @@ test('keeps qualification protocols without a network and ranks the karts once t
   })
   const taken = (await pitsOnServer()).total.moves
   await dragInto('15', 0)
-  await expect(queue(0)).toHaveText(['3', '15'])
+  await expect.poll(() => inCorridor(0)).toEqual(['q3', 'q15'])
   await expect.poll(async () => (await pitsOnServer()).total.moves).toBe(taken + 1)
   await context.setOffline(true)
-  await page.getByRole('button', { name: 'Отменить' }).click()
-  await expect(queue(0)).toHaveText(['1', '3'])
+  await undo.click()
+  await expect.poll(() => inCorridor(0)).toEqual(['s2', 'q3'])
   await dragInto('15', 1)
-  await expect(queue(1)).toHaveText(['13', '15'])
+  await expect.poll(() => inCorridor(1)).toEqual(['q13', 'q15'])
   expect((await sendPits([{ id: 'e2e-seventeen', lane: 0, kart: '17', at: Date.now() + 1000 }])).status()).toBe(204)
   await context.setOffline(false)
-  await expect(queue(0)).toHaveText(['3', '17'])
-  await expect(queue(1)).toHaveText(['13', '15'])
+  await expect.poll(() => inCorridor(0)).toEqual(['q3', 'q17'])
+  await expect.poll(() => inCorridor(1)).toEqual(['q13', 'q15'])
   await expect.poll(async () => (await standingOnServer()).slice(-2)).toEqual([
     [1, '15'],
     [0, '17'],
   ])
   expect((await standingOnServer()).filter(([, kart]) => kart === '15')).toEqual([[1, '15']])
   expect((await pitsOnServer()).total.moves).toBe(taken + 3)
+
+  // A protocol read later in the race brings its teams into the pits, on the karts they qualified
+  // on: «Квала 10» has 33 too. Added on another phone, it comes into the pits here once it is read,
+  // with nothing done on this phone and no restart. 7, typed in by hand, went with the undo without
+  // a network.
+  await expect(grid).toHaveCount(13)
+  await expect(team('7')).toHaveCount(0)
+  const added = await page.request.put(`/api/races/${raceId}/qualification_files/6d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6`, {
+    multipart: { file: pdf('Квала 10.pdf'), name: 'Квала 10.pdf', added_at: new Date().toISOString() },
+  })
+  expect(added.status()).toBe(201)
+  await expect(team('33')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('tab', { name: 'Пит-стопы' })).toHaveAttribute('aria-selected', 'true')
+  await expect(team('33')).toHaveAttribute('data-pace', /^0\.\d+$/)
+  await expect(grid).toHaveCount(14)
+  // 13 is on the kart 9 qualified on, at its pace with both protocols read.
+  const kart9Now = (await team('13').getAttribute('data-pace'))!
+
+  // Starting the pits over is asked first: a «no» leaves them as they are, and the focus where it was.
+  await more.click()
+  page.once('dialog', (dialog) => dialog.dismiss())
+  await page.getByRole('menuitem', { name: 'Начать сначала' }).click()
+  await expect(page.getByRole('menu')).toHaveCount(0)
+  await expect(more).toBeFocused()
+  await expect.poll(() => inCorridor(0)).toEqual(['q3', 'q17'])
+
+  // A «yes» undoes every stop, on every phone, and the pits ask for their corridors again.
+  let asked = ''
+  await more.click()
+  page.once('dialog', (dialog) => {
+    asked = dialog.message()
+    void dialog.accept()
+  })
+  await page.getByRole('menuitem', { name: 'Начать сначала' }).click()
+  await expect(lanes).toBeVisible()
+  expect(asked).toBe('Начать пит-стопы сначала? Смены сотрутся на всех телефонах, коридоры выберете заново.')
+  await expect(corridors).toHaveCount(0)
+  await expect(grid).toHaveCount(0)
+  await expect
+    .poll(async () => {
+      const log = await pitsOnServer()
+      return { lanes: log.lanes, undone: log.moves.every((move) => log.undone.includes(move.id)) }
+    })
+    .toEqual({ lanes: null, undone: true })
+  expect(await standingOnServer()).toEqual([])
+
+  // Chosen again, the corridors are empty, and every team is back on the kart it qualified on.
+  await lanes.getByRole('radio', { name: '3 коридора' }).click()
+  await done.click()
+  await expect(corridors).toHaveCount(3)
+  await expect(page.getByTestId('corridor-kart')).toHaveCount(0)
+  await expect(grid).toHaveCount(14)
+  await expect(team('1')).toHaveAttribute('data-pace', '0')
+  await expect(team('9')).toHaveAttribute('data-pace', kart9Now)
+  await expect(undo).toBeDisabled()
+  await expect.poll(async () => (await pitsOnServer()).lanes).toBe(3)
+
+  // Once anything stands the corridors stay: one chosen later on another phone, which had not read
+  // the pits, changes nothing, there or here.
+  const sendLanes = (lanes: number | null, at: number, undone: string[] = []) =>
+    page.request.put(`/api/races/${raceId}/pit_log`, { data: { pit_log: { undone, lanes, lanes_at: at } } })
+  await longPress(2)
+  await longPress(0)
+  await expect.poll(() => inCorridor(2)).toEqual(['s0'])
+  await expect.poll(() => inCorridor(0)).toEqual(['s1'])
+  await expect.poll(async () => (await standingOnServer()).length).toBe(2)
+  expect((await sendLanes(1, Date.now() + 1000)).status()).toBe(204)
+  expect((await pitsOnServer()).lanes).toBe(3)
+
+  // The same on a second phone that has never read these pits, with no network for them: it asks for
+  // the corridors, and its choice gives way to the ones the race is on once the network is back.
+  const phone = await browser.newContext({ ...devices['Pixel 7'], baseURL: test.info().project.use.baseURL })
+  await asInstalled(phone)
+  const second = await phone.newPage()
+  const pitLog = (url: URL) => url.pathname.endsWith('/pit_log')
+  await second.route(pitLog, (route) => route.abort())
+  await second.goto('/')
+  await confirmInTelegram(second, request)
+  await second.getByRole('button', { name: /^Этап 5 · Тольятти/ }).click({ timeout: 10_000 })
+  await second.getByRole('tab', { name: 'Пит-стопы' }).click()
+  await second.getByRole('button', { name: 'Готово' }).click()
+  await expect(second.getByTestId('corridor')).toHaveCount(1)
+  await second.unroute(pitLog)
+  await expect(second.getByTestId('corridor')).toHaveCount(3, { timeout: 15_000 })
+  await expect(second.getByTestId('corridor-kart')).toHaveCount(2)
+  await phone.close()
+  expect((await pitsOnServer()).lanes).toBe(3)
+  await expect(corridors).toHaveCount(3)
+
+  // Started over on another phone, and the corridors chosen there: they come here, and what was
+  // undone here before cannot be entered again.
+  await undo.click()
+  await expect(redo).toBeEnabled()
+  await expect.poll(async () => (await standingOnServer()).length).toBe(1)
+  const ids = (await pitsOnServer()).moves.map((move) => move.id)
+  expect((await sendLanes(null, Date.now() + 1000, ids)).status()).toBe(204)
+  expect((await sendLanes(2, Date.now() + 2000)).status()).toBe(204)
+  await expect(corridors).toHaveCount(2, { timeout: 15_000 })
+  await expect(page.getByTestId('corridor-kart')).toHaveCount(0)
+  await expect(undo).toBeDisabled()
+  await expect(redo).toBeDisabled()
+
+  // Started over there once more: the pits here ask for their corridors again.
+  expect((await sendLanes(null, Date.now() + 3000)).status()).toBe(204)
+  await expect(lanes).toBeVisible({ timeout: 15_000 })
+  await done.click()
+  await expect(corridors).toHaveCount(1)
+  await expect.poll(async () => (await pitsOnServer()).lanes).toBe(1)
 })
 
 // Protocols come out late: the pits are entered from the start of the race, by number.
@@ -432,6 +606,14 @@ test('enters the pits before any protocol, by the numbers typed in', async ({ pa
   const team = page.getByRole('button', { name: 'Номер 12A', exact: true })
   await page.getByRole('button', { name: 'Пит-стопы без квалификации' }).click()
   await expect(pitsTab).toHaveAttribute('aria-selected', 'true')
+
+  // The first time, the pits ask how many corridors the pit lane has: one unless told otherwise.
+  const lanes = page.getByRole('radiogroup', { name: 'Сколько коридоров в пите?' })
+  await expect(lanes.getByRole('radio', { name: '1 коридор' })).toBeChecked()
+  await expect(page.getByText('Скорость картов появится после квалификации')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Готово' }).click()
+  await expect(lanes).toHaveCount(0)
+  await expect(page.getByTestId('corridor')).toHaveCount(1)
   await expect(page.getByText('Скорость картов появится после квалификации')).toBeVisible()
   await expect(page.getByTestId('pit-kart')).toHaveCount(0)
 
@@ -449,11 +631,14 @@ test('enters the pits before any protocol, by the numbers typed in', async ({ pa
   await page.getByRole('tab', { name: 'Квалификация' }).click()
   await expect(page.getByRole('button', { name: 'Добавить квалификацию' })).toBeVisible()
 
-  // The server has the move, and the race opens in its pits from now on.
+  // The server has the move and the corridors, and the race opens in its pits from now on.
   const raceId = await page.evaluate(() => localStorage.getItem('rocket-hunter.race'))
   await expect
-    .poll(async () => (await (await page.request.get(`/api/races/${raceId}/pit_log`)).json()).moves)
-    .toEqual([{ id: expect.any(String), lane: 0, kart: '12A', at: expect.any(Number) }])
+    .poll(async () => {
+      const log = await (await page.request.get(`/api/races/${raceId}/pit_log`)).json()
+      return { moves: log.moves, lanes: log.lanes }
+    })
+    .toEqual({ moves: [{ id: expect.any(String), lane: 0, kart: '12A', at: expect.any(Number) }], lanes: 1 })
   await page.reload()
   await expect(pitsTab).toHaveAttribute('aria-selected', 'true')
   await expect(team).toBeVisible()

@@ -21,8 +21,9 @@ export type PitMove = { id: string; lane: number; kart: string | null; at: numbe
 // and a move once undone stays undone. Nothing is ever taken out, so nothing comes back.
 export type Moves = { moves: PitMove[]; undone: string[] }
 
-// The corridors a race can have (app/models/race.rb). All of them are kept whatever the race has
-// now: fewer corridors hide the karts of the rest, more bring them back as they were.
+// The corridors a pit lane can have (PitLog::LANES in app/models/pit_log.rb). All of them are
+// replayed whatever the pits show: a move into a corridor they do not have (sent by a phone without
+// a network after another started the pits over with fewer) keeps its karts there, hidden, not lost.
 export const CORRIDORS = 3
 
 // A physical kart.
@@ -129,6 +130,15 @@ export function isOld(move: PitMove): boolean {
   return move.at % OLD_STEP === 0 && move.id === oldId(move.at / OLD_STEP, move)
 }
 
+// Real times of entry are decades after the places old logs give for one.
+const TIMED_FROM = Date.UTC(2020, 0)
+
+// A move with no real time of entry: one kept from an old log, or one «Вернуть» entered again from
+// it, under an id of its own but at its place in the old log.
+export function untimed(move: PitMove): boolean {
+  return move.at < TIMED_FROM
+}
+
 function sameStop(a: PitMove, b: PitMove): boolean {
   return a.kart !== null && a.lane === b.lane && a.kart === b.kart && Math.abs(a.at - b.at) <= SAME_STOP_MS
 }
@@ -169,6 +179,21 @@ export function replay(moves: readonly PitMove[]): Pitlane {
 export function lanesOf(chosen: number | null, moves: readonly PitMove[]): number | null {
   if (chosen !== null) return chosen
   return moves.length > 0 ? Math.max(...moves.map((move) => move.lane)) + 1 : null
+}
+
+// The corridors as a phone or the server keeps them: how many, null when they are to be chosen
+// (before the first stop, or after the pits were started over), and when that was, by the clock of
+// the phone that chose them or started the pits over.
+export type LaneChoice = { lanes: number | null; at: number }
+
+// Whether the corridors chosen on a phone take the place of the ones the server, or another phone,
+// has. The later do, but never over corridors something stands in: once the race is on its
+// corridors stay, and only starting the pits over changes them. So a phone that chose before it had
+// read the pits does not take the corridors away from the stops entered in them. What stands is
+// counted without the stops entered on the choosing phone and not sent yet: those were entered in
+// the corridors it chose. The server does the same (PitLog#take_lanes).
+export function replaces(chosen: LaneChoice, there: LaneChoice, standsThere: boolean): boolean {
+  return chosen.at > there.at && (chosen.lanes === null || there.lanes === null || !standsThere)
 }
 
 // The kart a team is on the track with.

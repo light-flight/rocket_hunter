@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_03_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_04_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -29,7 +29,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_03_120000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.jsonb "undone", default: [], null: false
+    t.integer "lanes"
+    t.bigint "lanes_at", default: 0, null: false
     t.index ["race_id"], name: "index_pit_logs_on_race_id", unique: true
+    t.check_constraint "lanes >= 1 AND lanes <= 3", name: "pit_logs_lanes_range"
   end
 
   create_table "qualification_files", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -53,9 +56,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_03_120000) do
     t.string "name", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.integer "lanes", default: 1, null: false
     t.index ["created_at"], name: "index_races_on_created_at"
-    t.check_constraint "lanes >= 1 AND lanes <= 3", name: "races_lanes_range"
   end
 
   create_table "sessions", force: :cascade do |t|

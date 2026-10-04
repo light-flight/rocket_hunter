@@ -222,6 +222,26 @@ export function Redo() {
   )
 }
 
+// A clock with an arrow going back round it: what was done, and when.
+export function History() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-5.5 stroke-2 ${ICON}`}>
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6L3.5 8.5" />
+      <path d="M3.5 4v4.5H8" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  )
+}
+
+// Three dots: more that does not fit on the screen.
+export function More() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-6 stroke-[2.6] ${ICON}`}>
+      <path d="M5 12h.01M12 12h.01M19 12h.01" />
+    </svg>
+  )
+}
+
 export function ArrowUp() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 stroke-2 ${ICON}`}>

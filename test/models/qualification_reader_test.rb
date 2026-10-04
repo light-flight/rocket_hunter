@@ -70,4 +70,21 @@ class QualificationReaderTest < ActiveSupport::TestCase
 
     with_qualification(reader: nil) { assert_instance_of QualificationReader, QualificationReader.build }
   end
+
+  test "the stand-in answers «Квала 9» to any file, and one kart more to «Квала 10»" do
+    canned = QualificationReader::Canned.new
+    nine = canned.read("%PDF-1.4\n% Квала 9\n".b, "application/pdf")
+
+    assert_equal %w[ 1 11 9 5 2 3 16 17 15 12 13 10 20 ], nine[:rows].pluck("kart")
+    assert_equal [ "40.899", "42.496" ], [ nine[:rows].first["best_lap"], nine[:rows].last["best_lap"] ]
+    assert_equal [ [], "canned" ], nine.values_at(:warnings, :model)
+    assert_equal nine, canned.read("\xFF\xD8\xFF".b, "image/jpeg")
+    assert_equal nine, canned.read(nil, "application/pdf")
+
+    ten = canned.read("%PDF-1.4\n% Квала 10\n".b, "application/pdf")
+    assert_equal nine[:rows] + [ { "kart" => "33", "best_lap" => "41.700" } ], ten[:rows]
+    assert_equal [ 41_700 ], Protocol.new(ten[:rows]).laps["33"]
+    # Written by a test as text rather than bytes.
+    assert_equal ten, canned.read("% Квала 10", "application/pdf")
+  end
 end

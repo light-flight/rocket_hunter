@@ -1,30 +1,32 @@
 module Api
   # The pits of a race. A phone sends what was done on it that the server has not confirmed yet: the
-  # moves it entered and the ids of the moves it undid. The log here takes in what it does not have,
-  # so a send that is repeated, late, or crosses one from another phone changes nothing that it should
-  # not. The phones read the log back, only what they have not read yet: both lists only grow at
-  # their end.
+  # moves it entered, the ids of the moves it undid, and the corridors when it chose them. The log here
+  # takes in what it does not have, so a send that is repeated, late, or crosses one from another phone
+  # changes nothing that it should not. The phones read the log back, only what they have not read yet:
+  # both lists only grow at their end.
   class PitLogsController < BaseController
     before_action :set_race
 
     # With moves=N&undone=M, how much of each list the phone has read, and moves_last and undone_last,
-    # the id of the last one of each it read: it gets the rest.
+    # the id of the last one of each it read: it gets the rest. The corridors always come, with the
+    # time they were chosen: none and 0 while nobody has chosen them.
     def show
       log = @race.pit_log || @race.build_pit_log
       from = { moves: read(log.moves, :moves), undone: read(log.undone, :undone) }
 
       render json: { moves: log.moves.drop(from[:moves]), undone: log.undone.drop(from[:undone]), from: from,
-        total: { moves: log.moves.size, undone: log.undone.size } }
+        total: { moves: log.moves.size, undone: log.undone.size }, lanes: log.lanes, lanes_at: log.lanes_at }
     end
 
     def update
-      moves, undone = sent(:moves), sent(:undone)
-      return head :unprocessable_content unless moves && undone
+      moves, undone, choice = sent(:moves), sent(:undone), chosen
+      return head :unprocessable_content unless moves && undone && choice
 
       # One writer of a race at a time: what another phone sent meanwhile is taken in, not written over.
       @race.with_lock do
         log = @race.pit_log || @race.build_pit_log
         log.take(moves, undone)
+        log.take_lanes(*choice, moves) unless choice.empty?
         log.save ? head(:no_content) : head(:unprocessable_content)
       end
     end
@@ -53,6 +55,18 @@ module Api
         log = params.fetch(:pit_log)
         list = log.is_a?(ActionController::Parameters) ? log.fetch(kind, []) : nil
         list.map { it.is_a?(ActionController::Parameters) ? it.to_unsafe_h.to_h : it } if list.is_a?(Array)
+      end
+
+      # The corridors the phone chose, null when it started the pits over, and when it chose them, as it
+      # sent them. Nothing when it sends neither: it chose nothing since its last send. nil when one
+      # comes without the other, or as anything but whole numbers.
+      def chosen
+        log = params.fetch(:pit_log)
+        return unless log.is_a?(ActionController::Parameters)
+        return [] unless log.key?(:lanes) || log.key?(:lanes_at)
+
+        lanes, at = log[:lanes], log[:lanes_at]
+        [ lanes, at ] if log.key?(:lanes) && (lanes.nil? || lanes.is_a?(Integer)) && at.is_a?(Integer)
       end
   end
 end

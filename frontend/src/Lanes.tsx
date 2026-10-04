@@ -1,16 +1,14 @@
-import { type KeyboardEvent, type PointerEvent, useId, useRef } from 'react'
+import { type KeyboardEvent, type PointerEvent, useRef } from 'react'
 import { LANES, lanesLabel } from './races.ts'
 
 // How many corridors the pit lane has: three segments, each a picture of the pit seen from
 // above with two karts waiting in every corridor. A thumb slides behind the one chosen. A press
 // chooses the segment under the finger and sliding moves the choice along, so a gloved hand
-// does not have to catch a small handle. On a short screen (iPhone SE) it gets lower, so the
-// key of the form stays above the keyboard.
+// does not have to catch a small handle. labelledBy is the question on the screen it answers.
 
-type LanesPickerProps = { value: number; onChange: (lanes: number) => void }
+type LanesPickerProps = { value: number; onChange: (lanes: number) => void; labelledBy: string }
 
-export function LanesPicker({ value, onChange }: LanesPickerProps) {
-  const label = useId()
+export function LanesPicker({ value, onChange, labelledBy }: LanesPickerProps) {
   // The press in progress, and the choice to go back to if a scroll takes it over.
   const press = useRef<{ pointer: number; before: number } | null>(null)
 
@@ -61,49 +59,44 @@ export function LanesPicker({ value, onChange }: LanesPickerProps) {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <span id={label} className="text-sm text-fg-3 [@media(max-height:700px)]:sr-only">
-        Коридоры в пите
-      </span>
+    <div
+      role="radiogroup"
+      aria-labelledby={labelledBy}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onKeyDown={onKeyDown}
+      className="relative flex h-25 touch-pan-y rounded-lg bg-field p-1 ring-1 ring-control select-none ring-inset"
+    >
       <div
-        role="radiogroup"
-        aria-labelledby={label}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onKeyDown={onKeyDown}
-        className="relative flex h-25 touch-pan-y rounded-lg bg-field p-1 ring-1 ring-control select-none ring-inset [@media(max-height:700px)]:h-16"
-      >
-        <div
-          aria-hidden="true"
-          className="absolute top-1 bottom-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-md bg-control shadow-[0_0_0_1px_var(--color-line),0_3px_8px_rgb(0_0_0/0.55)] transition-transform duration-[260ms] ease-[cubic-bezier(0.25,0.8,0.25,1)]"
-          style={{ transform: `translateX(${(value - 1) * 100}%)` }}
-        />
-        {LANES.map((lanes) => {
-          const chosen = lanes === value
-          return (
-            <button
-              key={lanes}
-              type="button"
-              role="radio"
-              aria-checked={chosen}
-              aria-label={lanesLabel(lanes)}
-              tabIndex={chosen ? 0 : -1}
-              onClick={() => onChange(lanes)}
-              className="relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-inset [@media(max-height:700px)]:gap-0.5"
+        aria-hidden="true"
+        className="absolute top-1 bottom-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-md bg-control shadow-[0_0_0_1px_var(--color-line),0_3px_8px_rgb(0_0_0/0.55)] transition-transform duration-[260ms] ease-[cubic-bezier(0.25,0.8,0.25,1)]"
+        style={{ transform: `translateX(${(value - 1) * 100}%)` }}
+      />
+      {LANES.map((lanes) => {
+        const chosen = lanes === value
+        return (
+          <button
+            key={lanes}
+            type="button"
+            role="radio"
+            aria-checked={chosen}
+            aria-label={lanesLabel(lanes)}
+            tabIndex={chosen ? 0 : -1}
+            onClick={() => onChange(lanes)}
+            className="relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-inset"
+          >
+            <Pit lanes={lanes} chosen={chosen} />
+            <span
+              aria-hidden="true"
+              className={`text-sm transition-colors ${chosen ? 'font-semibold text-fg' : 'text-fg-3'}`}
             >
-              <Pit lanes={lanes} chosen={chosen} />
-              <span
-                aria-hidden="true"
-                className={`text-sm transition-colors ${chosen ? 'font-semibold text-fg' : 'text-fg-3'}`}
-              >
-                {lanesLabel(lanes)}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+              {lanesLabel(lanes)}
+            </span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -122,7 +115,7 @@ function Pit({ lanes, chosen }: { lanes: number; chosen: boolean }) {
     <svg
       viewBox={`0 0 ${width} ${LENGTH}`}
       aria-hidden="true"
-      className={`h-15 w-auto shrink-0 fill-current transition-colors [@media(max-height:700px)]:h-8 ${
+      className={`h-15 w-auto shrink-0 fill-current transition-colors ${
         chosen ? 'text-fg' : 'text-fg-off'
       }`}
     >
