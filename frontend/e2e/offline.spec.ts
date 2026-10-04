@@ -55,8 +55,12 @@ async function asInstalled(context: BrowserContext) {
 }
 
 // Pulls a sheet by the bar at its top, as a finger does, and holds still before letting go: no flick.
+// The finger goes to the bar once the sheet has stopped sliding.
 async function pullSheet(page: Page, sheet: Locator, dy: number) {
-  const bar = (await sheet.getByTestId('sheet-handle').boundingBox())!
+  const handle = sheet.getByTestId('sheet-handle')
+  const width = (await handle.boundingBox())!.width
+  await handle.hover({ position: { x: width / 2, y: 6 } })
+  const bar = (await handle.boundingBox())!
   const x = bar.x + bar.width / 2
   const y = bar.y + 6
   await page.mouse.move(x, y)
@@ -254,7 +258,7 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await page.evaluate(() => window.scrollBy(0, -50))
   expect(await karts.first().boundingBox()).toEqual(table)
   // Pulled down by the bar at its top, it goes.
-  await pullSheet(page, protocols, 200)
+  await pullSheet(page, protocols, 120)
   await expect(protocols).toBeHidden()
   expect(await page.evaluate(() => window.scrollY)).toBe(scrolled)
 
@@ -739,6 +743,7 @@ test('a driver changes karts in the same corridor as often as they come in', asy
   const other = page.getByRole('dialog', { name: 'Другой номер' })
   await other.getByLabel('Номер').fill('12')
   await other.getByRole('button', { name: 'Коридор 1' }).click()
+  await expect(other).toBeHidden()
   await expect.poll(inCorridor).toEqual(['s1', 'q12'])
 
   // Then again and again, seconds apart: first in, first out, every time.

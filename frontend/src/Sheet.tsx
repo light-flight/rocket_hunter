@@ -1,15 +1,26 @@
-import { type PointerEvent, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import {
+  type PointerEvent,
+  type ReactNode,
+  type Ref,
+  type RefObject,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react'
+import { useKeyboardInset } from './keyboard.ts'
 
 // A sheet that slides up from the bottom of the screen, as in the phone's own apps. The bar at its
 // top is pulled: up opens a long sheet to the whole screen, down closes it. It also closes by a tap
-// on the dimmed screen above it, by Escape and by its «Закрыть». The screen under it stays still.
+// on the dimmed screen above it, by Escape and by its «Закрыть». The screen under it stays still,
+// and the sheet stands above the keyboard.
 
 // How long a sheet takes to move, and how it moves: fast at first, then easing in, as the phone's own.
 const MOVE_MS = 300
 const MOVE = 'duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]'
 // A long sheet opens to this much of the screen first, and to all but its top edge when pulled up.
 const HALF = 0.6
-const FULL = 'calc(100dvh - env(safe-area-inset-top) - 0.75rem)'
+const full = (keyboard: number) => `calc(100dvh - env(safe-area-inset-top) - 0.75rem - ${keyboard}px)`
 // How far ahead a flick of the finger carries the sheet, in milliseconds of its speed at the end.
 const FLICK_MS = 120
 // A pull shorter than this is a tap on the bar.
@@ -21,6 +32,9 @@ type SheetProps = {
   // What the sheet is called for those who listen to the screen, and over its top, small.
   label: string
   caption?: string
+  // A field typed in at once: it has the keyboard from the tap that opened the sheet, so the sheet
+  // is there at once rather than sliding in.
+  focus?: RefObject<HTMLElement | null>
   children: ReactNode
   onClose: () => void
   ref?: Ref<SheetHandle>
@@ -28,13 +42,14 @@ type SheetProps = {
 
 type Pull = { pointer: number; from: number; height: number; trail: { y: number; t: number }[] }
 
-export function Sheet({ label, caption = label, children, onClose, ref }: SheetProps) {
+export function Sheet({ label, caption = label, focus, children, onClose, ref }: SheetProps) {
   const dialog = useRef<HTMLDialogElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const body = useRef<HTMLDivElement>(null)
   const pull = useRef<Pull | null>(null)
   // Below the screen until it has slid in, and again on its way out.
-  const [shown, setShown] = useState(false)
+  const [shown, setShown] = useState(focus !== undefined)
+  const keyboard = useKeyboardInset()
   const [expanded, setExpanded] = useState(false)
   // How far the finger has taken the sheet from the height it had: down by its offset, up by the
   // height it adds.
@@ -46,6 +61,7 @@ export function Sheet({ label, caption = label, children, onClose, ref }: SheetP
   useEffect(() => {
     dialog.current?.showModal()
     lockScroll()
+    focus?.current?.focus({ preventScroll: true })
     // Laid out below the screen first, so that it slides in from there.
     panel.current?.getBoundingClientRect()
     const frame = requestAnimationFrame(() => setShown(true))
@@ -53,7 +69,7 @@ export function Sheet({ label, caption = label, children, onClose, ref }: SheetP
       cancelAnimationFrame(frame)
       unlockScroll()
     }
-  }, [])
+  }, [focus])
 
   function close() {
     if (closing.current) return
@@ -132,6 +148,9 @@ export function Sheet({ label, caption = label, children, onClose, ref }: SheetP
         close()
       }}
       onClose={onClose}
+      // The phone scrolls a focused field into sight even in a box that does not scroll: the sheet
+      // is placed by its own rules.
+      onScroll={(event) => event.currentTarget.scrollTo(0, 0)}
       className="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-hidden border-0 bg-transparent p-0 text-fg backdrop:bg-transparent"
     >
       <div
@@ -145,11 +164,16 @@ export function Sheet({ label, caption = label, children, onClose, ref }: SheetP
         data-testid="sheet"
         data-expanded={expanded}
         className={`absolute inset-x-0 bottom-0 mx-auto flex max-w-md flex-col rounded-t-2xl bg-sheet shadow-[0_0_0_1px_var(--color-line),0_-12px_40px_rgb(0_0_0/0.6)] ${
-          moved ? '' : `transition-[translate,max-height] ${MOVE} motion-reduce:transition-none`
+          moved ? '' : `transition-[translate,max-height,bottom] ${MOVE} motion-reduce:transition-none`
         }`}
         style={{
+          bottom: keyboard,
           translate: `0 ${shown ? `${down}px` : '100%'}`,
-          maxHeight: moved?.up ? `min(${moved.height + moved.up}px, ${FULL})` : expanded ? FULL : `${HALF * 100}dvh`,
+          maxHeight: moved?.up
+            ? `min(${moved.height + moved.up}px, ${full(keyboard)})`
+            : expanded
+              ? full(keyboard)
+              : `min(${HALF * 100}dvh, ${full(keyboard)})`,
         }}
       >
         <div

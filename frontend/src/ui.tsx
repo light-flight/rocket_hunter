@@ -1,4 +1,5 @@
-import { type ComponentProps, type ReactNode, useEffect, useId, useState } from 'react'
+import { type ComponentProps, type ReactNode, useId } from 'react'
+import { useKeyboardInset } from './keyboard.ts'
 
 // The building blocks every screen is made of. The rules they follow are in STYLE.md.
 
@@ -46,31 +47,6 @@ export function MainAction({
       {children}
     </button>
   )
-}
-
-// How much of the screen the on-screen keyboard covers: the main action stands above it.
-function useKeyboardInset(): number {
-  const [inset, setInset] = useState(0)
-
-  useEffect(() => {
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    // Not when zoomed in by a pinch: that shrinks the visible area too. Nor by focus: a tap on
-    // the key moves the focus to it before the click, and the key must not move away then.
-    const update = () => {
-      const covered = window.innerHeight - viewport.height - viewport.offsetTop
-      setInset(viewport.scale > 1.01 ? 0 : Math.max(0, Math.round(covered)))
-    }
-    viewport.addEventListener('resize', update)
-    viewport.addEventListener('scroll', update)
-    return () => {
-      viewport.removeEventListener('resize', update)
-      viewport.removeEventListener('scroll', update)
-    }
-  }, [])
-
-  return inset
 }
 
 // The bottom of a screen that holds its main action, above the keyboard when there is one.
@@ -122,7 +98,7 @@ export function BackLink({ children, onClick, arrow = false, label }: BackLinkPr
   )
 }
 
-// A sheet raised over the screen: a menu, or a window at the top of it.
+// A menu raised over the screen, by the key or the corridor it opens from.
 export const SHEET = 'rounded-xl bg-sheet text-fg shadow-[0_0_0_1px_var(--color-line),0_18px_40px_rgb(0_0_0/0.8)]'
 
 const ICON = 'shrink-0 fill-none stroke-current [stroke-linecap:round] [stroke-linejoin:round]'

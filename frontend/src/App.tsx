@@ -42,7 +42,9 @@ function App() {
 
   return (
     // No screen has a header. Positioned and isolated for the background a screen lays under itself.
-    <main className="relative isolate mx-auto flex min-h-dvh max-w-md flex-col gap-4 px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+    // The top starts right under the status bar, which the iPhone draws over the app: the way back
+    // and the title have room enough around them of their own.
+    <main className="relative isolate mx-auto flex min-h-dvh max-w-md flex-col gap-4 px-4 pt-[max(env(safe-area-inset-top),0.5rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)]">
       {needRefresh && (
         <button
           type="button"
