@@ -10,9 +10,19 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_04_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_04_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "avatars", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "telegram_file_id", null: false
+    t.binary "data", null: false
+    t.string "checksum", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_avatars_on_user_id", unique: true
+  end
 
   create_table "invitations", force: :cascade do |t|
     t.bigint "user_id"
@@ -89,6 +99,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_100000) do
     t.index ["telegram_id"], name: "index_users_on_telegram_id", unique: true
   end
 
+  add_foreign_key "avatars", "users"
   add_foreign_key "invitations", "users"
   add_foreign_key "pit_logs", "races"
   add_foreign_key "qualification_files", "races"

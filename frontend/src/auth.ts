@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api.ts'
 
-export type User = { name: string }
+// avatar: the address of the manager's Telegram profile photo, or null when there is none.
+export type User = { name: string; avatar: string | null }
 
 export type Auth = ReturnType<typeof useAuth>
 
@@ -19,11 +20,12 @@ function storedUser(): User | null {
 }
 
 function toUser(value: unknown): User | null {
-  const name = (value as { name?: unknown } | null)?.name
-  return typeof name === 'string' ? { name } : null
+  const { name, avatar } = (value ?? {}) as { name?: unknown; avatar?: unknown }
+  if (typeof name !== 'string') return null
+  return { name, avatar: typeof avatar === 'string' && avatar.startsWith('/api/avatar?') ? avatar : null }
 }
 
-// Reads the {"user":{"name":"…"}} body of a session response.
+// Reads the {"user":{"name":"…","avatar":"/api/avatar?v=…"}} body of a session response.
 export async function userFrom(response: Response): Promise<User | null> {
   const body: { user?: unknown } | null = await response.json().catch(() => null)
   return toUser(body?.user)

@@ -1,7 +1,7 @@
 require "net/http"
 
-# The only place that calls Telegram: the app itself answers the bot's updates in the
-# webhook response. Run in production: bin/kamal app exec --reuse 'bin/rails telegram:set_webhook'
+# Sets the bot up. The app answers the bot's updates in the webhook response and calls Telegram
+# only from background jobs (TelegramBot). Run in production: bin/kamal app exec --reuse 'bin/rails telegram:set_webhook'
 namespace :telegram do
   desc "Tell Telegram to send the bot's updates to the production webhook"
   task set_webhook: :environment do
@@ -23,10 +23,10 @@ namespace :telegram do
 
   # Never print the request URL: the bot token is in its path.
   def telegram_api(method, **params)
-    token = Rails.application.credentials.dig(:telegram, :bot_token)
-    abort "telegram.bot_token is missing from the credentials (bin/rails credentials:edit)" if token.blank?
+    token = Rails.configuration.x.telegram.bot_token
+    abort "No bot token: telegram.bot_token in the credentials or TELEGRAM_BOT_TOKEN" if token.blank?
     # Checked here because URI() quotes the whole address, token included, when it cannot parse it.
-    abort "telegram.bot_token in the credentials does not look like a bot token (123456:ABC...)" unless token.match?(/\A\d+:[\w-]+\z/)
+    abort "The bot token does not look like a bot token (123456:ABC...)" unless token.match?(/\A\d+:[\w-]+\z/)
 
     uri = URI("https://api.telegram.org/bot#{token}/#{method}")
     Net::HTTP.post(uri, params.to_json, "Content-Type" => "application/json").body
