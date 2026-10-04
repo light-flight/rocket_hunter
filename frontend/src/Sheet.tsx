@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react'
 import { useKeyboardInset } from './keyboard.ts'
+import { dimStatusBar } from './theme.ts'
 
 // A sheet that slides up from the bottom of the screen, as in the phone's own apps. It has no title:
 // its top is a bar, and a wide place round the bar to take it by: pulled up it opens a long sheet to
@@ -50,6 +51,10 @@ export function Sheet({ label, focus, children, onClose, ref }: SheetProps) {
   // Below the screen until it has slid in, and again on its way out.
   const [shown, setShown] = useState(focus !== undefined)
   const keyboard = useKeyboardInset()
+  // A field in the sheet has the focus: only then is there a keyboard to stand above. A strip the
+  // browser keeps at the bottom of the screen is no keyboard (Chrome on iPhone).
+  const [typing, setTyping] = useState(false)
+  const lift = typing ? keyboard : 0
   const [expanded, setExpanded] = useState(false)
   // How far the finger has taken the sheet from the height it had: down by its offset, up by the
   // height it adds.
@@ -61,6 +66,7 @@ export function Sheet({ label, focus, children, onClose, ref }: SheetProps) {
   useEffect(() => {
     dialog.current?.showModal()
     lockScroll()
+    dimStatusBar(true)
     focus?.current?.focus({ preventScroll: true })
     // Laid out below the screen first, so that it slides in from there.
     panel.current?.getBoundingClientRect()
@@ -68,6 +74,7 @@ export function Sheet({ label, focus, children, onClose, ref }: SheetProps) {
     return () => {
       cancelAnimationFrame(frame)
       unlockScroll()
+      dimStatusBar(false)
     }
   }, [focus])
 
@@ -148,35 +155,35 @@ export function Sheet({ label, focus, children, onClose, ref }: SheetProps) {
         close()
       }}
       onClose={onClose}
-      // The phone scrolls a focused field into sight even in a box that does not scroll: the sheet
-      // is placed by its own rules.
-      onScroll={(event) => event.currentTarget.scrollTo(0, 0)}
-      className="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-hidden border-0 bg-transparent p-0 text-fg backdrop:bg-transparent"
+      // Not a box that scrolls or clips: the sheet's colour and the dim go on below its bottom edge.
+      className="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-visible border-0 bg-transparent p-0 text-fg backdrop:bg-transparent"
     >
       <div
         aria-hidden="true"
         onClick={close}
-        className={`absolute inset-0 bg-scrim ${moved ? '' : `transition-opacity ${MOVE}`}`}
+        className={`absolute inset-x-0 top-0 -bottom-[50dvh] bg-scrim ${moved ? '' : `transition-opacity ${MOVE}`}`}
         style={{ opacity: shown ? Math.max(0, 1 - down / Math.max(1, moved?.height ?? 1)) : 0 }}
       />
       <div
         ref={panel}
         data-testid="sheet"
         data-expanded={expanded}
-        // Its colour goes on below its edge: should a browser keep a strip at the bottom of the
-        // screen, or the sheet stand a little above it, the strip is the sheet, not a gap.
+        // Its colour goes on below its edge: should a browser keep a strip at the bottom of the screen
+        // below the box it gives the app, the strip is the sheet, not a gap.
         className={`absolute inset-x-0 bottom-0 mx-auto flex max-w-md flex-col rounded-t-2xl bg-sheet shadow-[var(--shadow-sheet)] after:absolute after:inset-x-0 after:top-full after:h-[50dvh] after:bg-sheet ${
           moved ? '' : `transition-[translate,max-height,bottom] ${MOVE} motion-reduce:transition-none`
         }`}
         style={{
-          bottom: keyboard,
+          bottom: lift,
           translate: `0 ${shown ? `${down}px` : '100%'}`,
           maxHeight: moved?.up
-            ? `min(${moved.height + moved.up}px, ${full(keyboard)})`
+            ? `min(${moved.height + moved.up}px, ${full(lift)})`
             : expanded
-              ? full(keyboard)
-              : `min(${HALF * 100}dvh, ${full(keyboard)})`,
+              ? full(lift)
+              : `min(${HALF * 100}dvh, ${full(lift)})`,
         }}
+        onFocus={(event) => setTyping(event.target.matches('input, textarea, [contenteditable]'))}
+        onBlur={() => setTyping(false)}
       >
         <div
           data-testid="sheet-handle"

@@ -67,11 +67,11 @@ export function LanesPicker({ value, onChange, labelledBy }: LanesPickerProps) {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onKeyDown={onKeyDown}
-      className="relative flex h-25 touch-pan-y rounded-lg bg-field p-1 ring-1 ring-control select-none ring-inset"
+      className="relative flex h-25 touch-pan-y rounded-lg bg-well p-1 ring-1 ring-control select-none ring-inset"
     >
       <div
         aria-hidden="true"
-        className="absolute top-1 bottom-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-md bg-control shadow-[var(--shadow-thumb)] transition-transform duration-[260ms] ease-[cubic-bezier(0.25,0.8,0.25,1)]"
+        className="absolute top-1 bottom-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-md bg-thumb shadow-[var(--shadow-thumb)] transition-transform duration-[260ms] ease-[cubic-bezier(0.25,0.8,0.25,1)]"
         style={{ transform: `translateX(${(value - 1) * 100}%)` }}
       />
       {LANES.map((lanes) => {
@@ -109,7 +109,7 @@ const LENGTH = 60
 function Pit({ lanes, chosen }: { lanes: number; chosen: boolean }) {
   const width = lanes * CORRIDOR + (lanes - 1) * GAP
   // The helmet is a hole through the kart: it shows whatever is under the segment.
-  const helmet = chosen ? 'fill-control' : 'fill-field'
+  const helmet = chosen ? 'fill-thumb' : 'fill-well'
 
   return (
     <svg

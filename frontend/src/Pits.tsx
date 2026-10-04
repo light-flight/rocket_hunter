@@ -437,7 +437,6 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
               top: Math.min(menu.y + 12, window.innerHeight - 120),
             }}
           >
-            <p className="px-4 pt-3 pb-1.5 text-xs tracking-[0.06em] text-fg-3 uppercase">Коридор {menu.lane + 1}</p>
             <button
               type="button"
               role="menuitem"
@@ -497,7 +496,7 @@ function PitKey({ children, onClick, disabled, label }: PitKeyProps) {
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="flex h-13 items-center justify-center gap-2 rounded-lg bg-control text-body font-semibold ring-1 ring-line ring-inset active:opacity-70 disabled:bg-field disabled:text-fg-off disabled:ring-control"
+      className="flex h-13 items-center justify-center gap-2 rounded-lg bg-control text-body font-semibold ring-1 ring-line ring-inset active:opacity-70 disabled:bg-well disabled:text-fg-off disabled:ring-control"
     >
       {children}
     </button>

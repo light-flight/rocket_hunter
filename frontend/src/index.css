@@ -21,6 +21,10 @@
   --color-field: #0c0c0e;
   /* A sheet raised over the screen. */
   --color-sheet: #121214;
+  /* The track of a choice and a key that cannot be pressed: sunk into the ground. The chosen part
+     of a choice is a thumb raised out of it. */
+  --color-well: #0c0c0e;
+  --color-thumb: #1c1c20;
   /* The fill of a control that is not the main action, and the hairline between rows of a list. */
   --color-control: #1c1c20;
   /* A corridor of the pit lane, and one a kart is being dragged over. */
@@ -142,6 +146,8 @@
     --color-fg-off: #b3b3bd;
     --color-field: #ffffff;
     --color-sheet: #ffffff;
+    --color-well: #e6e6ec;
+    --color-thumb: #ffffff;
     --color-control: #e4e4ea;
     --color-lane: #e6e6ec;
     --color-lane-over: #d8d8e0;

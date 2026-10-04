@@ -127,12 +127,12 @@ export function ChevronRight() {
   )
 }
 
-// A cloud with an exclamation mark: made here, not on the server yet.
+// A cloud with an arrow up: made here, not on the server yet.
 export function NotSent() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 stroke-[1.8] ${ICON}`}>
       <path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 9.5 4.25 4.25 0 0 0 7 18z" />
-      <path d="M12 10.5v3.5M12 16.5v.01" />
+      <path d="M12 16v-5.5M9.75 12.75L12 10.5l2.25 2.25" />
     </svg>
   )
 }

@@ -286,11 +286,11 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await picker.setInputFiles([pdf('Квала 9.pdf')])
   const twoFiles = page.getByRole('button', { name: /^2 протокола · 13 картов$/ })
   await expect(twoFiles).toBeVisible({ timeout: 15_000 })
-  await expect(karts.first()).toHaveText(/^1\s*1\s*40\.899\s*1$/)
 
   await twoFiles.click()
   await expect(files).toHaveCount(2)
   await expect(files.nth(1)).toHaveText(/Квала 9\.pdf\s*Готово · 13 картов$/, { timeout: 15_000 })
+  await expect(karts.first()).toHaveText(/^1\s*1\s*40\.899\s*1$/)
   await files.nth(1).click()
   const sheet = page.getByRole('dialog', { name: 'Квала 9.pdf' })
   await expect(sheet.getByRole('list', { name: 'Замечания' })).toHaveText('·Тот же файл, что «Квала 9.pdf»')

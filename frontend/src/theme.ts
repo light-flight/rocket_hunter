@@ -13,11 +13,15 @@ export const THEMES: { theme: Theme; label: string }[] = [
 ]
 
 const KEY = 'rocket-hunter.theme'
-// The ground of each look: what a phone paints around the app (theme-color).
+// The ground of each look: what a phone paints around the app (theme-color), and the same dimmed as
+// under a sheet (--color-scrim), so that the status bar of an Android phone dims with the screen.
 const GROUND = { dark: '#060607', light: '#f2f2f5' }
+const DIMMED = { dark: '#020203', light: '#a5a5a7' }
 
 const listeners = new Set<() => void>()
 let chosen: Theme = stored()
+// How many sheets are open now.
+let dims = 0
 
 function stored(): Theme {
   try {
@@ -34,7 +38,13 @@ const phoneIsLight = () => window.matchMedia('(prefers-color-scheme: light)').ma
 function apply() {
   const look = chosen === 'system' ? (phoneIsLight() ? 'light' : 'dark') : chosen
   document.documentElement.dataset.theme = look
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', GROUND[look])
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', (dims > 0 ? DIMMED : GROUND)[look])
+}
+
+// A sheet opened over the screen, or closed.
+export function dimStatusBar(on: boolean) {
+  dims = Math.max(0, dims + (on ? 1 : -1))
+  apply()
 }
 
 export function chooseTheme(theme: Theme) {
