@@ -16,9 +16,9 @@ class TelegramBot
   end
 
   def initialize(token: Rails.configuration.x.telegram.bot_token)
-    raise Error, "telegram.bot_token is missing from the credentials" if token.blank?
+    raise Error, "No bot token: telegram.bot_token in the credentials or TELEGRAM_BOT_TOKEN" if token.blank?
     # URI() quotes the whole address, token included, when it cannot parse it.
-    raise Error, "telegram.bot_token does not look like a bot token" unless token.match?(/\A\d+:[\w-]+\z/)
+    raise Error, "The bot token does not look like a bot token" unless token.match?(/\A\d+:[\w-]+\z/)
 
     @token = token
   end

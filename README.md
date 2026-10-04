@@ -27,7 +27,8 @@ PWA для менеджера картинговой команды: помог�
   менеджер нажимает в боте «Запустить» и «Войти», возвращается в приложение, и оно входит само.
   Ответ бота уходит в теле ответа на webhook, так что вебхук Telegram не вызывает. После
   входа и после принятия приглашения фоновая задача берёт через Bot API фото профиля менеджера
-  (`getUserProfilePhotos`, нужен `telegram.bot_token` в credentials) и хранит его в базе: ссылка
+  (`getUserProfilePhotos`, нужен токен бота: `telegram.bot_token` в credentials или переменная
+  `TELEGRAM_BOT_TOKEN`) и хранит его в базе: ссылка
   на файл от Telegram содержит токен бота. Телефон показывает фото в кружке над списком гонок
   (`/api/avatar`, адрес меняется вместе с фото, service worker держит его для работы без сети).
   Фото нет или оно видно только контактам — в кружке первая буква имени.
@@ -358,7 +359,8 @@ Deploy → Run workflow, ветка `main`. Или попросить Claude з�
    ssh-copy-id -i ~/.ssh/rocket_hunter_deploy.pub root@64.188.61.188
    ```
 
-2. В GitHub: Settings → Secrets and variables → Actions → New repository secret, пять секретов:
+2. В GitHub: Settings → Secrets and variables → Actions → New repository secret, пять секретов
+   и шестой по желанию:
 
    | Секрет | Откуда взять |
    |---|---|
@@ -367,6 +369,7 @@ Deploy → Run workflow, ветка `main`. Или попросить Claude з�
    | `RAILS_MASTER_KEY` | `cat config/master.key` |
    | `DATABASE_KEY` | `cat config/database.key` |
    | `ANTHROPIC_API_KEY` | ключ API модели из console.anthropic.com |
+   | `TELEGRAM_BOT_TOKEN` | по желанию: токен бота из @BotFather, для фото менеджеров; не нужен, если он уже в credentials (`telegram.bot_token`) |
 
    По `DEPLOY_KNOWN_HOSTS` выкладка узнаёт сервер: если по его адресу ответит кто-то другой,
    она остановится. Ключ сервера изменился (сервер переустановлен) — обновить этот секрет.

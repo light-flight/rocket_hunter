@@ -52,6 +52,7 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           for name in RAILS_MASTER_KEY DATABASE_KEY DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS ANTHROPIC_API_KEY; do
             if [ -z "${!name}" ]; then
@@ -64,6 +65,11 @@ jobs:
           printf '%s' "$RAILS_MASTER_KEY" > config/master.key
           printf '%s' "$DATABASE_KEY" > config/database.key
           printf '%s' "$ANTHROPIC_API_KEY" > config/anthropic.key
+          # Optional: without it managers get no profile photos, everything else works.
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "::warning::Нет секрета TELEGRAM_BOT_TOKEN: приложение будет без фото менеджеров, если токена нет и в credentials."
+          fi
+          printf '%s' "$TELEGRAM_BOT_TOKEN" > config/telegram.key
 
           install -d -m 700 ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519

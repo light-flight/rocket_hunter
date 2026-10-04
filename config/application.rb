@@ -26,9 +26,10 @@ module RocketHunter
 
     # The bot behind sign-in and invitations. Public: it is part of every t.me link.
     config.x.telegram.bot_username = "rocket_hunter_auth_bot"
-    # Secret: only background jobs and rake tasks call Telegram with it. Without it the app
-    # still signs managers in, it just shows no Telegram profile photos.
-    config.x.telegram.bot_token = credentials.dig(:telegram, :bot_token).presence
+    # Secret: only background jobs and rake tasks call Telegram with it. In the credentials
+    # (telegram.bot_token) or in TELEGRAM_BOT_TOKEN. Without it the app still signs managers in,
+    # it just shows no Telegram profile photos.
+    config.x.telegram.bot_token = credentials.dig(:telegram, :bot_token).presence || ENV["TELEGRAM_BOT_TOKEN"].presence
 
     # The model that reads qualification protocols, and its API key: in the credentials
     # (anthropic.api_key) or in ANTHROPIC_API_KEY.
