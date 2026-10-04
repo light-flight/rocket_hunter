@@ -71,7 +71,7 @@ export function LanesPicker({ value, onChange, labelledBy }: LanesPickerProps) {
     >
       <div
         aria-hidden="true"
-        className="absolute top-1 bottom-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-md bg-control shadow-[0_0_0_1px_var(--color-line),0_3px_8px_rgb(0_0_0/0.55)] transition-transform duration-[260ms] ease-[cubic-bezier(0.25,0.8,0.25,1)]"
+        className="absolute top-1 bottom-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-md bg-control shadow-[var(--shadow-thumb)] transition-transform duration-[260ms] ease-[cubic-bezier(0.25,0.8,0.25,1)]"
         style={{ transform: `translateX(${(value - 1) * 100}%)` }}
       />
       {LANES.map((lanes) => {

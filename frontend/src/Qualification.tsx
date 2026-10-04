@@ -11,7 +11,7 @@ import {
 } from './qualification.ts'
 import { useOnline } from './status.ts'
 import { Sheet, type SheetHandle } from './Sheet.tsx'
-import { Attention, Check, ChevronRight, MainAction, NotSent, Protocol, Spinner } from './ui.tsx'
+import { Check, ChevronRight, Cross, MainAction, NotSent, Protocol, Spinner } from './ui.tsx'
 import { plural } from './words.ts'
 
 // The qualification of a race: its karts from the fastest to the slowest, in a table. Above them,
@@ -48,10 +48,10 @@ export function Qualification({ raceId, files, karts, onSignedOut }: Qualificati
 type ProtocolsKeyProps = { files: QualificationFile[]; karts: number; onOpen: () => void }
 
 // How many protocols there are and what came of them, on the key that shows them. A protocol that
-// was not read, or that the model has notes on, is told here: its row is a tap away only.
+// was not read is told here: its row is a tap away only. The model's notes are not: they are in the
+// protocol, for whoever opens it.
 function ProtocolsKey({ files, karts, onOpen }: ProtocolsKeyProps) {
   const failed = files.filter((file) => file.status === 'failed').length
-  const noted = files.some((file) => file.status === 'read' && file.warnings.length > 0)
 
   return (
     <button
@@ -66,17 +66,10 @@ function ProtocolsKey({ files, karts, onOpen }: ProtocolsKeyProps) {
       <span className="min-w-0 flex-1 text-body">
         {files.length} {plural(files.length, 'протокол', 'протокола', 'протоколов')}
         {karts > 0 && ` · ${karts} ${plural(karts, 'карт', 'карта', 'картов')}`}
-        {failed > 0 ? (
+        {failed > 0 && (
           <span className="text-fg-2"> · {failed} {plural(failed, 'не прочитан', 'не прочитаны', 'не прочитаны')}</span>
-        ) : (
-          noted && <span className="text-fg-2"> · есть замечания</span>
         )}
       </span>
-      {(failed > 0 || noted) && (
-        <span className="flex text-fg-2">
-          <Attention />
-        </span>
-      )}
       <ChevronRight />
     </button>
   )
@@ -269,7 +262,7 @@ function FileStatus({ file }: { file: QualificationFile }) {
   const online = useOnline()
   const karts = Object.keys(file.laps).length
 
-  let icon = <Attention />
+  let icon = <Cross />
   let text = `Не прочитан: ${file.error ?? 'неизвестная ошибка'}`
   let bright = true
   if (file.status === 'local') {
@@ -281,9 +274,8 @@ function FileStatus({ file }: { file: QualificationFile }) {
     text = 'Распознаётся…'
     bright = false
   } else if (file.status === 'read') {
-    icon = file.warnings.length > 0 ? <Attention /> : <Check />
+    icon = <Check />
     text = `Готово · ${karts} ${plural(karts, 'карт', 'карта', 'картов')}`
-    if (file.warnings.length > 0) text += ' · есть замечания'
   }
 
   return (
@@ -321,7 +313,7 @@ function FileSheet({ file, onSignedOut, onClose }: FileSheetProps) {
   }
 
   return (
-    <Sheet ref={sheet} label={file.name} caption="Протокол" onClose={onClose}>
+    <Sheet ref={sheet} label={file.name} onClose={onClose}>
       <div className="flex flex-col gap-1">
         <div className="flex flex-col gap-1 pb-3">
           <p className="text-[1.375rem]/7 font-bold break-words">{file.name}</p>
@@ -363,7 +355,7 @@ function FileSheet({ file, onSignedOut, onClose }: FileSheetProps) {
           </MainAction>
         )}
         {offline && (
-          <p role="alert" className="text-center text-sm text-amber-400">
+          <p role="alert" className="text-center text-sm text-warn">
             Нет связи с сервером. Прочитать снова можно, когда появится сеть.
           </p>
         )}

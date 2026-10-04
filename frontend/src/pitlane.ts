@@ -42,7 +42,8 @@ export type Pitlane = {
   // The kart each team that has come in is on the track with now. Any other team is still on
   // the kart it qualified on.
   riding: Map<string, PitKart>
-  // The kart a team went out on at each of its stops, by the id of the move.
+  // The kart a team came in on at each of its stops, and the kart it went out on, by the id of the move.
+  came: Map<string, PitKart>
   took: Map<string, PitKart>
 }
 
@@ -120,6 +121,7 @@ function byTime(a: PitMove, b: PitMove): number {
 export function replay(moves: readonly PitMove[]): Pitlane {
   const corridors: PitKart[][] = Array.from({ length: CORRIDORS }, () => [])
   const riding = new Map<string, PitKart>()
+  const came = new Map<string, PitKart>()
   const took = new Map<string, PitKart>()
   let spares = 0
 
@@ -132,13 +134,15 @@ export function replay(moves: readonly PitMove[]): Pitlane {
       continue
     }
     const team = move.kart
-    queue.push({ ...kartOf(riding, team), leftBy: team })
+    const on = { ...kartOf(riding, team), leftBy: team }
+    queue.push(on)
     // The driver gets into the front kart. In an empty corridor that is the kart the team came on.
     const out = queue.shift()!
     riding.set(team, out)
+    came.set(move.id, on)
     took.set(move.id, out)
   }
-  return { corridors, riding, took }
+  return { corridors, riding, came, took }
 }
 
 // How many corridors the pits of a race have: the number chosen on the pit screen. None chosen yet

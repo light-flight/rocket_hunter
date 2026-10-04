@@ -163,10 +163,10 @@ export function SignIn({ onSignedIn, screen = false }: SignInProps) {
     <div className={`flex flex-col gap-3 ${screen ? 'flex-1' : ''}`}>
       {screen && <Palm />}
       {screen && <Masthead />}
-      {notice && <p className="text-amber-400">{notice}</p>}
+      {notice && <p className="text-warn">{notice}</p>}
       <div className="mt-auto flex flex-col gap-3">
         {attempt?.opened && (
-          <p role="status" className={`text-center text-sm ${unreachable ? 'text-amber-400' : 'text-fg-2'}`}>
+          <p role="status" className={`text-center text-sm ${unreachable ? 'text-warn' : 'text-fg-2'}`}>
             {unreachable ? 'Нет связи с сервером, пробуем снова…' : 'Ждём подтверждения в Telegram…'}
           </p>
         )}

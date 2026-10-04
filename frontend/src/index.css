@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* The light look, chosen in the manager's menu (theme.ts): the same tokens, other values. */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
 /*
   Design tokens. The principles behind them are in STYLE.md at the root of the repository.
   Screens move to them one at a time: a screen that has not been designed yet keeps the
@@ -31,6 +34,17 @@
   /* The fill of the main action: the brand darkened until white reads on it at 5.7:1. */
   --color-action: #c70e66;
   --color-on-action: #ffffff;
+  /* Something went wrong and the manager should read it: no network, nothing saved. */
+  --color-warn: #fbbf24;
+  /* The screen dimmed under a sheet, and less so under a small menu. */
+  --color-scrim: rgb(0 0 0 / 0.6);
+  --color-dim: rgb(0 0 0 / 0.45);
+  /* The thin edge of a tile of a known pace: dark tiles would melt into the ground otherwise. */
+  --color-tile-edge: rgb(255 255 255 / 0.08);
+  /* A number on a tile of a known pace: the pace colours are the same in both looks, so is this. */
+  --color-on-pace: #f5f5f7;
+  /* What stands behind the status bar of an iPhone app: it draws its text white over the app. */
+  --color-status-bar: transparent;
 
   --font-sans: "Sofia Sans Semi Condensed Variable", system-ui, sans-serif;
   /* The name of the app. Has no italic: lean it by the 10 degrees of the letters of the icon. */
@@ -51,9 +65,6 @@
 
   --tracking-key: 0.06em;
   --tracking-wordmark: 0.04em;
-
-  /* Lifts the main action off the tiles behind it. */
-  --shadow-key: 0 14px 30px rgb(0 0 0 / 0.7), 0 3px 8px rgb(0 0 0 / 0.6);
 
   /* The glow behind the icon barely breathes: it gives depth, it is not a pulse. */
   --animate-halo: halo 9s ease-in-out infinite;
@@ -103,5 +114,48 @@
   html {
     background: var(--color-ground);
     color: var(--color-fg);
+    color-scheme: dark;
+  }
+
+  /* Shadows, used as shadow-[var(--shadow-key)]: Tailwind writes a shadow of the theme out in
+     full, so the light look could not change it there. */
+  :root {
+    /* Lifts the main action off the tiles behind it. */
+    --shadow-key: 0 14px 30px rgb(0 0 0 / 0.7), 0 3px 8px rgb(0 0 0 / 0.6);
+    /* A sheet from the bottom, a small menu, the chosen part of a choice, a number being dragged. */
+    --shadow-sheet: 0 0 0 1px var(--color-line), 0 -12px 40px rgb(0 0 0 / 0.6);
+    --shadow-menu: 0 0 0 1px var(--color-line), 0 18px 40px rgb(0 0 0 / 0.8);
+    --shadow-thumb: 0 0 0 1px var(--color-line), 0 3px 8px rgb(0 0 0 / 0.55);
+    --shadow-lift: 0 0 0 2px var(--color-fg), 0 14px 30px rgb(0 0 0 / 0.85);
+  }
+
+  /* The light look: a pale ground, white sheets and dark text. The pink, the action and the pace of
+     the karts stay as they are. Muted text and warnings are darker than in the dark look, to read
+     at 5:1 and more on the ground and on the keys. */
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --color-ground: #f2f2f5;
+    --color-line: #d0d0d8;
+    --color-fg: #111114;
+    --color-fg-2: #3c3c44;
+    --color-fg-3: #5f5f6a;
+    --color-fg-off: #b3b3bd;
+    --color-field: #ffffff;
+    --color-sheet: #ffffff;
+    --color-control: #e4e4ea;
+    --color-lane: #e6e6ec;
+    --color-lane-over: #d8d8e0;
+    --color-cap: #ffffff;
+    --color-cap-edge: #c2c2cb;
+    --color-warn: #9a4508;
+    --color-scrim: rgb(0 0 0 / 0.32);
+    --color-dim: rgb(0 0 0 / 0.18);
+    --color-tile-edge: rgb(0 0 0 / 0.1);
+    --color-status-bar: #060607;
+    --shadow-key: 0 10px 24px rgb(0 0 0 / 0.16), 0 2px 6px rgb(0 0 0 / 0.12);
+    --shadow-sheet: 0 0 0 1px var(--color-line), 0 -10px 30px rgb(0 0 0 / 0.12);
+    --shadow-menu: 0 0 0 1px var(--color-line), 0 14px 32px rgb(0 0 0 / 0.16);
+    --shadow-thumb: 0 0 0 1px var(--color-line), 0 2px 6px rgb(0 0 0 / 0.12);
+    --shadow-lift: 0 0 0 2px var(--color-fg), 0 12px 26px rgb(0 0 0 / 0.25);
   }
 }

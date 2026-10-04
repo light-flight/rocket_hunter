@@ -10,6 +10,17 @@
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
     <title>Rocket Hunter</title>
+    <!-- The look chosen in the manager's menu, before the first paint (src/theme.ts does the same). -->
+    <script>
+      try {
+        var theme = localStorage.getItem('rocket-hunter.theme')
+        var light = theme === 'light' || (theme === 'system' && matchMedia('(prefers-color-scheme: light)').matches)
+        document.documentElement.dataset.theme = light ? 'light' : 'dark'
+        if (light) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#f2f2f5')
+      } catch (error) {
+        document.documentElement.dataset.theme = 'dark'
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
