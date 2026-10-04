@@ -1,23 +1,13 @@
 import { type ChangeEvent, type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Auth, User } from './auth.ts'
 import { Masthead, Palm } from './glove.tsx'
-import { LanesPicker } from './Lanes.tsx'
 import { Menu } from './Menu.tsx'
-import { standing } from './pitlane.ts'
+import { lanesOf, standing } from './pitlane.ts'
 import { Pits } from './Pits.tsx'
 import { usePitLog } from './pits.ts'
 import { Qualification } from './Qualification.tsx'
 import { ACCEPT, addFiles, syncFiles, useFiles, useKarts } from './qualification.ts'
-import {
-  cleanName,
-  createRace,
-  lanesLabel,
-  NAME_LIMIT,
-  type Race,
-  updateRace,
-  useRaces,
-  useRaceSync,
-} from './races.ts'
+import { cleanName, createRace, NAME_LIMIT, type Race, updateRace, useRaces, useRaceSync } from './races.ts'
 import { StorageTrouble } from './Trouble.tsx'
 import { watchRaces } from './watch.ts'
 import { ActionArea, BackLink, ChevronRight, MainAction, NotSent, Paperclip, Plus, TextField } from './ui.tsx'
@@ -71,14 +61,14 @@ export function Races({ user, auth }: RacesProps) {
     sync()
   }
 
-  async function create(name: string, lanes: number) {
-    open(await createRace(name, lanes))
+  async function create(name: string) {
+    open(await createRace(name))
     sync()
   }
 
-  async function edit(name: string, lanes: number) {
+  async function edit(name: string) {
     if (!selected) return
-    await updateRace(selected.id, name, lanes)
+    await updateRace(selected.id, name)
     setScreen('race')
     sync()
   }
@@ -134,19 +124,18 @@ export function Races({ user, auth }: RacesProps) {
 }
 
 type RaceFieldsProps = {
-  initial?: Pick<Race, 'name' | 'lanes'>
+  initial?: Pick<Race, 'name'>
   action: string
   // Not on the first screen: the keyboard would cover the greeting.
   autoFocus?: boolean
-  onSubmit: (name: string, lanes: number) => Promise<void>
-  children: (field: ReactNode, lanes: ReactNode) => ReactNode
+  onSubmit: (name: string) => Promise<void>
+  children: (field: ReactNode) => ReactNode
 }
 
-// The name of a race, its corridors and the key that saves them. The return key of the
-// keyboard saves them too.
+// The name of a race and the key that saves it. The return key of the keyboard saves it too. The
+// corridors of the pit lane are chosen in the pits, the first time they are opened.
 function RaceFields({ initial, action, autoFocus = false, onSubmit, children }: RaceFieldsProps) {
   const [name, setName] = useState(initial?.name ?? '')
-  const [lanes, setLanes] = useState(initial?.lanes ?? 1)
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
   const ready = cleanName(name) !== '' && !saving
@@ -158,7 +147,7 @@ function RaceFields({ initial, action, autoFocus = false, onSubmit, children }: 
     setSaving(true)
     setFailed(false)
     try {
-      await onSubmit(name, lanes)
+      await onSubmit(name)
     } catch {
       setFailed(true)
       setSaving(false)
@@ -181,7 +170,7 @@ function RaceFields({ initial, action, autoFocus = false, onSubmit, children }: 
 
   return (
     <form onSubmit={submit} className="flex flex-1 flex-col">
-      {children(field, <LanesPicker value={lanes} onChange={setLanes} />)}
+      {children(field)}
       <ActionArea>
         {failed && (
           <p role="alert" className="text-center text-sm text-amber-400">
@@ -196,7 +185,7 @@ function RaceFields({ initial, action, autoFocus = false, onSubmit, children }: 
   )
 }
 
-type FirstRaceProps = { waiting: boolean; onCreate: (name: string, lanes: number) => Promise<void> }
+type FirstRaceProps = { waiting: boolean; onCreate: (name: string) => Promise<void> }
 
 // The first screen of a phone that has no races: the app greets the manager and asks for one.
 function FirstRace({ waiting, onCreate }: FirstRaceProps) {
@@ -211,7 +200,7 @@ function FirstRace({ waiting, onCreate }: FirstRaceProps) {
 
   return (
     <RaceFields action="Создать гонку" onSubmit={onCreate}>
-      {(field, lanes) => (
+      {(field) => (
         <>
           <Palm size="low" />
           <Masthead raised />
@@ -220,7 +209,6 @@ function FirstRace({ waiting, onCreate }: FirstRaceProps) {
             <p className="text-body text-fg-2">Назовите гонку этого уикенда — дальше вся работа идёт внутри неё.</p>
           </div>
           <div className="mt-6">{field}</div>
-          <div className="mt-5 [@media(max-height:700px)]:mt-3">{lanes}</div>
         </>
       )}
     </RaceFields>
@@ -230,22 +218,20 @@ function FirstRace({ waiting, onCreate }: FirstRaceProps) {
 type RaceFormProps = {
   title: string
   action: string
-  initial?: Pick<Race, 'name' | 'lanes'>
-  onSubmit: (name: string, lanes: number) => Promise<void>
+  initial?: Pick<Race, 'name'>
+  onSubmit: (name: string) => Promise<void>
   onCancel: () => void
 }
 
-// A new race, or a change to one. Nothing but the fields: the keyboard takes half the screen,
-// and the corridors stay above it.
+// A new race, or a new name for one. Nothing but the field: the keyboard takes half the screen.
 function RaceForm({ title, action, initial, onSubmit, onCancel }: RaceFormProps) {
   return (
     <RaceFields initial={initial} action={action} autoFocus onSubmit={onSubmit}>
-      {(field, lanes) => (
+      {(field) => (
         <>
           <BackLink onClick={onCancel}>Отмена</BackLink>
           <h1 className="mt-2 text-title font-bold">{title}</h1>
           <div className="mt-5">{field}</div>
-          <div className="mt-5 [@media(max-height:700px)]:mt-3">{lanes}</div>
         </>
       )}
     </RaceFields>
@@ -352,14 +338,14 @@ const POLL_SLOWER_AFTER_MS = 5 * 60_000
 const SLOW_POLL_MS = 30_000
 
 // Inside a race. Before anything else, its qualification: the protocols to read and the karts
-// they rank. Once there are karts, or pit stops, the race opens in its pits. The pits work before
-// any protocol too: the numbers are typed in as the teams come in.
+// they rank. Once there are karts, or its pits are set up, the race opens in its pits. The pits
+// work before any protocol too: the numbers are typed in as the teams come in.
 function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScreenProps) {
   const files = useFiles(race.id)
   const karts = useKarts(race.id)
   const pitLog = usePitLog(race.id)
-  // Picked once the karts and the pits are known: the pits when the race has either, else its
-  // qualification.
+  // Picked once the karts and the pits are known: the pits when the race has karts or corridors,
+  // else its qualification.
   const [tab, setTab] = useState<Tab | null>(null)
   const [saveFailed, setSaveFailed] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
@@ -383,7 +369,8 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
 
   // Decided once, as soon as both are known, so the screen never switches under the hand.
   if (tab === null && karts !== undefined && pitLog !== undefined) {
-    setTab(karts.length > 0 || (pitLog && standing(pitLog).length > 0) ? 'pits' : 'qualification')
+    const pitsSetUp = pitLog !== null && lanesOf(pitLog.lanes, standing(pitLog)) !== null
+    setTab(karts.length > 0 || pitsSetUp ? 'pits' : 'qualification')
   }
 
   async function pick(event: ChangeEvent<HTMLInputElement>) {
@@ -426,16 +413,13 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
             Все гонки
           </BackLink>
           <h1 className="mt-2 text-title font-bold break-words">{race.name}</h1>
-          <div className="flex items-center gap-3.5 text-sm text-fg-3">
-            <span data-testid="race-lanes">{lanesLabel(race.lanes)}</span>
-            <button
-              type="button"
-              onClick={onEdit}
-              className="flex h-11 items-center px-1 underline underline-offset-3 active:opacity-70"
-            >
-              Изменить
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="-ml-1 flex h-11 items-center self-start px-1 text-sm text-fg-3 underline underline-offset-3 active:opacity-70"
+          >
+            Изменить
+          </button>
         </>
       )}
 

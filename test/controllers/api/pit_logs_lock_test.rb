@@ -11,7 +11,7 @@ class Api::PitLogsLockTest < ActionDispatch::IntegrationTest
 
   setup do
     sign_in_as users(:one)
-    Race.create!(id: RACE, name: "Этап 7 · Казань", lanes: 2)
+    Race.create!(id: RACE, name: "Этап 7 · Казань")
     # Loads the controller and the models before the phones start at once.
     get api_race_pit_log_url(RACE)
   end

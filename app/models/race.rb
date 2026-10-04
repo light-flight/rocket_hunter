@@ -2,8 +2,6 @@
 # inside one of them.
 class Race < ApplicationRecord
   NAME_LIMIT = 100
-  # Corridors in the pit lane: almost always one or two.
-  LANES = 1..3
 
   has_many :qualification_files, dependent: :delete_all
   has_one :pit_log, dependent: :delete
@@ -12,7 +10,6 @@ class Race < ApplicationRecord
   normalizes :name, with: ->(name) { name.gsub(/[[:cntrl:]]/, " ").squish }
 
   validates :name, presence: true, length: { maximum: NAME_LIMIT }
-  validates :lanes, inclusion: { in: LANES }
 
   # The karts of the qualification, fastest first: each one's best laps averaged across the
   # protocols read, and its pace from 0 (the fastest) to 1 (the slowest). The pace follows the

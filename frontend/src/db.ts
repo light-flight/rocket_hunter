@@ -7,8 +7,6 @@ import { type PitMove, fromOldLog } from './pitlane.ts'
 export type Race = {
   id: string
   name: string
-  // Corridors in the pit lane, 1 to 3.
-  lanes: number
   // When the race was made, on whichever phone made it: milliseconds since the epoch.
   createdAt: number
   // 1 while a change made on this phone has not reached the server. A number, because
@@ -65,14 +63,38 @@ export type PitLog = {
   undone: string[]
   // The moves undone on this phone, the last undone last: «Вернуть» enters the last one again.
   redo: PitMove[]
-  // The ids of what was done here that the server has not confirmed yet.
-  unsent: { moves: string[]; undone: string[] }
+  // The corridors of the pit lane, 1 to 3, chosen on the pit screen; null until they are. lanesAt is
+  // when they were chosen, by the clock of the phone that chose them: of two choices the later wins.
+  // 0 for the corridors a race had before they were chosen in the pits.
+  lanes: number | null
+  lanesAt: number
+  // What was done here that the server has not confirmed yet: the ids of the moves and of the moves
+  // undone, and whether the corridors have yet to go.
+  unsent: { moves: string[]; undone: string[]; lanes: boolean }
   // How much of the server's two lists this phone has read, and the id of the last one of each it
   // read: it asks for the rest only, and the server can tell it is still the list this phone read.
   read: { moves: number; undone: number; lastMove: string | null; lastUndone: string | null }
-  // 1 while unsent is not empty. A number, because IndexedDB cannot index booleans.
+  // 1 while anything is unsent. A number, because IndexedDB cannot index booleans.
   pending: 0 | 1
 }
+
+// The pits of a race where nothing has been done yet, and no corridors chosen.
+export function emptyPitLog(raceId: string): PitLog {
+  return {
+    raceId,
+    moves: [],
+    undone: [],
+    redo: [],
+    lanes: null,
+    lanesAt: 0,
+    unsent: { moves: [], undone: [], lanes: false },
+    read: { moves: 0, undone: 0, lastMove: null, lastUndone: null },
+    pending: 0,
+  }
+}
+
+// A race as it was kept while it had the corridors of its pit lane.
+type OldRace = Race & { lanes?: number }
 
 // A pit log as it was kept before moves had ids: the moves in order, and how many of them stood.
 type OldPitLog = { raceId: string; moves: { lane: number; kart: string | null }[]; count: number; pending: 0 | 1 }
@@ -93,7 +115,7 @@ db.version(2)
     tx
       .table('races')
       .toCollection()
-      .modify((race: Partial<Race>) => {
+      .modify((race: OldRace) => {
         race.lanes ??= 1
       }),
   )
@@ -128,6 +150,10 @@ db.version(5)
 // still do again, as undone, for the server may still have them standing. A move it undid and
 // then entered something else in place of is gone from it, so the server's copy stays and is
 // undone again by hand (README, «Выкладка»).
+// The corridors move from the race to its pits. A race the server had gets the same from the
+// server's migration, chosen at time 0 there and here. A race made or changed here and not sent
+// yet never takes them there any more, so its pits send them, as chosen just after that: they
+// count, unless stops stand there already in the corridors the server has (replaces, pitlane.ts).
 db.version(6)
   .stores({
     races: 'id, createdAt, pending',
@@ -136,24 +162,38 @@ db.version(6)
     rankings: 'raceId',
     pits: 'raceId, pending',
   })
-  .upgrade((tx) =>
-    tx
-      .table('pits')
-      .toCollection()
-      .modify((old: OldPitLog, ref: { value: PitLog }) => {
-        const moves = fromOldLog(old.moves, old.count)
-        // The moves undone after them, which could still be done again.
-        const undone = fromOldLog(old.moves, old.moves.length).slice(old.count)
-        const waiting = (list: PitMove[]) => (old.pending ? list.map((move) => move.id) : [])
-        const unsent = { moves: waiting(moves), undone: waiting(undone) }
-        ref.value = {
-          raceId: old.raceId,
-          moves,
-          undone: unsent.undone,
-          redo: undone.reverse(),
-          unsent,
-          read: { moves: 0, undone: 0, lastMove: null, lastUndone: null },
-          pending: unsent.moves.length + unsent.undone.length > 0 ? 1 : 0,
-        }
-      }),
-  )
+  .upgrade(async (tx) => {
+    const pits = tx.table('pits')
+    await pits.toCollection().modify((old: OldPitLog, ref: { value: PitLog }) => {
+      const moves = fromOldLog(old.moves, old.count)
+      // The moves undone after them, which could still be done again.
+      const undone = fromOldLog(old.moves, old.moves.length).slice(old.count)
+      const waiting = (list: PitMove[]) => (old.pending ? list.map((move) => move.id) : [])
+      const unsent = { moves: waiting(moves), undone: waiting(undone), lanes: false }
+      ref.value = {
+        ...emptyPitLog(old.raceId),
+        moves,
+        undone: unsent.undone,
+        redo: undone.reverse(),
+        unsent,
+        pending: unsent.moves.length + unsent.undone.length > 0 ? 1 : 0,
+      }
+    })
+
+    const races = tx.table('races')
+    for (const race of (await races.toArray()) as OldRace[]) {
+      if (race.lanes === undefined) continue
+      const log: PitLog = (await pits.get(race.id)) ?? emptyPitLog(race.id)
+      const sent = race.pending === 0
+      await pits.put({
+        ...log,
+        lanes: race.lanes,
+        lanesAt: sent ? 0 : 1,
+        unsent: { ...log.unsent, lanes: !sent },
+        pending: sent ? log.pending : 1,
+      })
+    }
+    await races.toCollection().modify((race: OldRace) => {
+      delete race.lanes
+    })
+  })
