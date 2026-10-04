@@ -10,10 +10,11 @@ import {
 } from 'react'
 import { useKeyboardInset } from './keyboard.ts'
 
-// A sheet that slides up from the bottom of the screen, as in the phone's own apps. The bar at its
-// top is pulled: up opens a long sheet to the whole screen, down closes it. It also closes by a tap
-// on the dimmed screen above it, by Escape and by its «Закрыть». The screen under it stays still,
-// and the sheet stands above the keyboard.
+// A sheet that slides up from the bottom of the screen, as in the phone's own apps. Its top, the bar
+// and the caption under it, is one wide place to take it by: pulled up it opens a long sheet to the
+// whole screen, pulled down it closes. It also closes by a tap on the dimmed screen above it and by
+// Escape; it has no key to close it but for those who listen to the screen. The screen under it
+// stays still, and the sheet stands above the keyboard.
 
 // How long a sheet takes to move, and how it moves: fast at first, then easing in, as the phone's own.
 const MOVE_MS = 300
@@ -89,7 +90,7 @@ export function Sheet({ label, caption = label, focus, children, onClose, ref }:
 
   function start(event: PointerEvent<HTMLDivElement>) {
     if (pull.current || (event.pointerType === 'mouse' && event.button !== 0)) return
-    // «Закрыть» is pressed, not pulled.
+    // A key in it is pressed, not pulled.
     if ((event.target as Element).closest('button')) return
     event.currentTarget.setPointerCapture(event.pointerId)
     const y = event.clientY
@@ -182,15 +183,13 @@ export function Sheet({ label, caption = label, focus, children, onClose, ref }:
           onPointerMove={follow}
           onPointerUp={release}
           onPointerCancel={release}
-          className="shrink-0 cursor-grab touch-none px-4 pt-2 select-none active:cursor-grabbing"
+          className="flex shrink-0 cursor-grab touch-none flex-col gap-3 px-4 pt-2 pb-3 select-none active:cursor-grabbing"
         >
-          <div aria-hidden="true" className="mx-auto h-1.25 w-9 rounded-full bg-cap-edge" />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs tracking-[0.06em] text-fg-3 uppercase">{caption}</p>
-            <button type="button" onClick={close} className="-mr-3 h-11 px-3 text-body text-fg-2 active:opacity-70">
-              Закрыть
-            </button>
-          </div>
+          <div aria-hidden="true" className="h-1.25 w-9 self-center rounded-full bg-cap-edge" />
+          <p className="text-xs tracking-[0.06em] text-fg-3 uppercase">{caption}</p>
+          <button type="button" onClick={close} className="sr-only">
+            Закрыть
+          </button>
         </div>
         <div
           ref={body}

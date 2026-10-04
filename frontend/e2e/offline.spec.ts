@@ -233,7 +233,9 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await expect(bar).toHaveAttribute('aria-valuetext', '0%, Ждёт сети · загрузится сам')
   await page.getByRole('button', { name: /^1 протокол$/ }).click()
   await expect(files).toHaveText([/Квала 9\.pdf.*Ждёт сети/])
-  await protocols.getByRole('button', { name: 'Закрыть' }).click()
+  // A sheet has no key to close it on the screen: it goes when pulled down by its bar.
+  expect((await protocols.getByRole('button', { name: 'Закрыть' }).boundingBox())!.width).toBeLessThanOrEqual(1)
+  await pullSheet(page, protocols, 120)
   await expect(protocols).toBeHidden()
 
   // With a network the file goes and is read, and the bar folds away. A line a kart: its place,
@@ -478,7 +480,7 @@ test('keeps qualification protocols without a network and ranks the karts once t
     seven,
   )
   await expect(journal.getByRole('listitem').first()).toHaveText(new RegExp(`^${time}`))
-  await journal.getByRole('button', { name: 'Закрыть' }).click()
+  await page.keyboard.press('Escape')
   await expect(journal).toBeHidden()
 
   // Without a network an undo is kept here, and goes once the network is back.
@@ -780,7 +782,8 @@ test('a driver changes karts in the same corridor as often as they come in', asy
     .toBe(5)
 
   // «Отменить» takes back the last stop only: the number is back on the kart it came in on.
-  await page.getByRole('dialog', { name: 'Журнал' }).getByRole('button', { name: 'Закрыть' }).click()
+  await pullSheet(page, page.getByRole('dialog', { name: 'Журнал' }), 120)
+  await expect(page.getByRole('dialog', { name: 'Журнал' })).toBeHidden()
   await page.getByRole('button', { name: 'Отменить' }).click()
   await expect.poll(inCorridor).toEqual(['s1', 'q12'])
 })
