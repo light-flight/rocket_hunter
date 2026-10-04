@@ -51,6 +51,14 @@ export default defineConfig({
         // Paths answered by Rails, not by the React shell. Installed phones keep this
         // list, so new server-side pages must live under one of these prefixes.
         navigateFallbackDenylist: [/^\/(api|rails|up)([/?]|$)/],
+        runtimeCaching: [
+          {
+            // The manager's photo. Its address changes with the photo, so a kept one is never stale.
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname === '/api/avatar',
+            handler: 'CacheFirst',
+            options: { cacheName: 'avatar', expiration: { maxEntries: 4 } },
+          },
+        ],
       },
     }),
   ],

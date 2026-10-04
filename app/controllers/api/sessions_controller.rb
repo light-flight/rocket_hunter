@@ -36,7 +36,7 @@ module Api
     private
       # The Telegram id stays on the server.
       def user_json(user)
-        { user: { name: user.name } }
+        { user: { name: user.name, avatar: user.avatar_url } }
       end
   end
 end

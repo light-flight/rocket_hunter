@@ -251,6 +251,22 @@ function initial(name: string): string {
   return (name.match(/\p{L}/u)?.[0] ?? Array.from(name.trim())[0] ?? '').toUpperCase()
 }
 
+// The manager's Telegram photo over the first letter of the name. The letter stays while the photo
+// loads, and when it cannot: no network before the phone ever kept it.
+function Avatar({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return null
+
+  return (
+    <img
+      src={src}
+      alt=""
+      onError={() => setFailed(true)}
+      className="absolute inset-0 size-full object-cover"
+    />
+  )
+}
+
 type RaceListProps = {
   races: Race[]
   selectedId: string | undefined
@@ -273,9 +289,10 @@ function RaceList({ races, selectedId, onOpen, onNew, user, auth }: RaceListProp
           type="button"
           onClick={() => setMenu(true)}
           aria-label={`Менеджер: ${user.name}`}
-          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sheet text-lg font-semibold ring-1 ring-line ring-inset active:opacity-70"
+          className="relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sheet text-lg font-semibold ring-1 ring-line ring-inset active:opacity-70"
         >
           {initial(user.name)}
+          {user.avatar && <Avatar key={user.avatar} src={user.avatar} />}
         </button>
       </div>
 

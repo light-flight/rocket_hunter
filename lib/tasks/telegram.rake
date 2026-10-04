@@ -1,7 +1,7 @@
 require "net/http"
 
-# The only place that calls Telegram: the app itself answers the bot's updates in the
-# webhook response. Run in production: bin/kamal app exec --reuse 'bin/rails telegram:set_webhook'
+# Sets the bot up. The app answers the bot's updates in the webhook response and calls Telegram
+# only from background jobs (TelegramBot). Run in production: bin/kamal app exec --reuse 'bin/rails telegram:set_webhook'
 namespace :telegram do
   desc "Tell Telegram to send the bot's updates to the production webhook"
   task set_webhook: :environment do

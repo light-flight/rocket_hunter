@@ -1,6 +1,6 @@
 module Telegram
-  # Receives the bot's updates. The reply travels in the body of the response, so the server
-  # never calls Telegram. Replies are fixed texts: nothing a sender typed is echoed back.
+  # Receives the bot's updates. The reply travels in the body of the response, so answering
+  # never waits on a call to Telegram. Replies are fixed texts: nothing a sender typed is echoed back.
   #
   # A valid update always gets a 200, because Telegram repeats an update answered with
   # anything else. No update_id bookkeeping is needed: a repeated update finds the work
@@ -60,6 +60,7 @@ module Telegram
 
       def accept_invitation(token, sender)
         Invitation.accept(token, telegram_id: sender[:id], name: User.name_from(sender), username: sender[:username])
+          &.tap(&:refresh_avatar_later)
       end
 
       # Opening the link never signs anyone in: the manager has to press the button.
@@ -84,6 +85,7 @@ module Telegram
 
         if attempt && action == "confirm" && (attempt.user.nil? || attempt.user == manager)
           attempt.update!(user: manager)
+          manager.refresh_avatar_later
           CONFIRMED
         elsif attempt && action == "reject"
           attempt.destroy!

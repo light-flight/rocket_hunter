@@ -9,6 +9,7 @@ Rails.application.routes.draw do
   namespace :api do
     get "health" => "health#show"
     resource  :session,         only: %i[ show create destroy ]
+    resource  :avatar,          only: :show
     resource  :sign_in_attempt, only: :create
     resources :invitations,     only: :create
     # Ids are made on the phone; anything that is not a UUID is not a race, nor a file.

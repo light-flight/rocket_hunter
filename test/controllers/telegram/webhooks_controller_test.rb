@@ -65,6 +65,24 @@ class Telegram::WebhooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal @manager, @attempt.reload.user
   end
 
+  test "confirm fetches the manager's photo in the background" do
+    with_bot_token do
+      assert_enqueued_with(job: RefreshAvatarJob, args: [ @manager.id ]) do
+        deliver callback_update("confirm:#{@attempt.token}", from: MANAGER)
+      end
+    end
+  end
+
+  test "without a bot token no photo is fetched" do
+    with_bot_token(nil) do
+      assert_no_enqueued_jobs(only: RefreshAvatarJob) do
+        deliver callback_update("confirm:#{@attempt.token}", from: MANAGER)
+      end
+    end
+
+    assert_equal Telegram::WebhooksController::CONFIRMED, reply["text"]
+  end
+
   test "a repeated confirm from the same manager gets the same answer" do
     2.times { deliver callback_update("confirm:#{@attempt.token}", from: MANAGER) }
 
@@ -124,6 +142,14 @@ class Telegram::WebhooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal "novikov", user.username
     assert_equal @manager, user.invited_by
     assert_not Invitation.exists?(invitation.id)
+  end
+
+  test "a new manager's photo is fetched in the background" do
+    with_bot_token do
+      deliver message_update("/start #{invitations(:pending).token}", from: STRANGER)
+    end
+
+    assert_enqueued_with(job: RefreshAvatarJob, args: [ User.find_by!(telegram_id: STRANGER[:id]).id ])
   end
 
   test "refuses a stranger with an expired invitation" do
@@ -220,5 +246,13 @@ class Telegram::WebhooksControllerTest < ActionDispatch::IntegrationTest
 
     def reply
       response.parsed_body
+    end
+
+    def with_bot_token(token = "123:test")
+      configured = Rails.configuration.x.telegram.bot_token
+      Rails.configuration.x.telegram.bot_token = token
+      yield
+    ensure
+      Rails.configuration.x.telegram.bot_token = configured
     end
 end

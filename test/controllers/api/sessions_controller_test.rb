@@ -29,7 +29,7 @@ class Api::SessionsControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :created
-    assert_equal({ "user" => { "name" => "Иван Петров" } }, response.parsed_body)
+    assert_equal({ "user" => { "name" => "Иван Петров", "avatar" => nil } }, response.parsed_body)
     assert_not SignInAttempt.exists?(attempt.id)
     assert_match(/^session_id=[^\n]*httponly/i, Array(response.headers["Set-Cookie"]).join("\n"))
 
@@ -89,7 +89,16 @@ class Api::SessionsControllerTest < ActionDispatch::IntegrationTest
     get api_session_url
 
     assert_response :ok
-    assert_equal({ "user" => { "name" => "Иван Петров" } }, response.parsed_body)
+    assert_equal({ "user" => { "name" => "Иван Петров", "avatar" => nil } }, response.parsed_body)
+  end
+
+  test "show gives the address of the manager's photo, which changes with the photo" do
+    sign_in_as @user
+    Avatar.create!(user: @user, telegram_file_id: "a", data: "\xFF\xD8\xFFone".b, checksum: "0123456789abcdef0123")
+
+    get api_session_url
+
+    assert_equal "/api/avatar?v=0123456789abcdef", response.parsed_body.dig("user", "avatar")
   end
 
   test "show answers unauthorized after the session is destroyed on the server" do
