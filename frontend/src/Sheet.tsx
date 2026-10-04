@@ -231,10 +231,13 @@ function lockScroll() {
   if (locks++ > 0) return
   scrolled = window.scrollY
   Object.assign(document.body.style, { position: 'fixed', top: `-${scrolled}px`, left: '0', right: '0' })
+  // The root takes the sheet's colour while one is open (index.css).
+  document.documentElement.toggleAttribute('data-sheet', true)
 }
 
 function unlockScroll() {
   if (--locks > 0) return
   Object.assign(document.body.style, { position: '', top: '', left: '', right: '' })
+  document.documentElement.toggleAttribute('data-sheet', false)
   window.scrollTo(0, scrolled)
 }
