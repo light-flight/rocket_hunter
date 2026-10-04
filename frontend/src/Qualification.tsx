@@ -10,7 +10,8 @@ import {
   syncFiles,
 } from './qualification.ts'
 import { useOnline } from './status.ts'
-import { Attention, Check, ChevronRight, MainAction, NotSent, Protocol, SHEET, Spinner } from './ui.tsx'
+import { Sheet, type SheetHandle } from './Sheet.tsx'
+import { Attention, Check, ChevronRight, MainAction, NotSent, Protocol, Spinner } from './ui.tsx'
 import { plural } from './words.ts'
 
 // The qualification of a race: its karts from the fastest to the slowest, in a table. Above them,
@@ -232,40 +233,18 @@ function KartTable({ karts }: { karts: Kart[] }) {
 type ProtocolsProps = { files: QualificationFile[]; onOpen: (id: string) => void; onClose: () => void }
 
 // Every protocol of the race, oldest first, and where each is on its way to being read. A tap on
-// one shows what the model read in it, over this window.
+// one shows what the model read in it, in a sheet over this one.
 function Protocols({ files, onOpen, onClose }: ProtocolsProps) {
-  const sheet = useRef<HTMLDialogElement>(null)
-
-  useEffect(() => {
-    sheet.current?.showModal()
-  }, [])
-
   return (
-    <dialog
-      ref={sheet}
-      onClose={onClose}
-      // A tap on the dimmed screen around it closes it.
-      onClick={(event) => event.target === sheet.current && sheet.current.close()}
-      aria-label="Протоколы"
-      className={`mx-auto mt-[calc(env(safe-area-inset-top)+1rem)] max-h-[calc(100dvh-env(safe-area-inset-top)-2rem)] w-[calc(100%-2rem)] max-w-sm flex-col ${SHEET} backdrop:bg-black/60 open:flex`}
-    >
-      <p className="shrink-0 px-4 pt-3 pb-1 text-xs tracking-[0.06em] text-fg-3 uppercase">Протоколы</p>
-      {/* Many protocols scroll inside, under the title and above the key that closes it. */}
-      <ul role="list" className="min-h-0 overflow-y-auto overscroll-contain px-4">
+    <Sheet label="Протоколы" onClose={onClose}>
+      <ul role="list">
         {files.map((file) => (
           <li key={file.id}>
             <FileRow file={file} onOpen={() => onOpen(file.id)} />
           </li>
         ))}
       </ul>
-      <button
-        type="button"
-        onClick={() => sheet.current?.close()}
-        className="h-12 shrink-0 text-body text-fg-2 active:opacity-70"
-      >
-        Закрыть
-      </button>
-    </dialog>
+    </Sheet>
   )
 }
 
@@ -320,16 +299,10 @@ type FileSheetProps = { file: QualificationFile; onSignedOut: () => void; onClos
 // What the model read in one file, its notes, and the two things to do about a bad read:
 // read it again or take the file out.
 function FileSheet({ file, onSignedOut, onClose }: FileSheetProps) {
-  const sheet = useRef<HTMLDialogElement>(null)
+  const sheet = useRef<SheetHandle>(null)
   const [busy, setBusy] = useState(false)
   const [offline, setOffline] = useState(false)
   const rows = Object.entries(file.laps).sort(([, a], [, b]) => Math.min(...a) - Math.min(...b))
-
-  useEffect(() => {
-    sheet.current?.showModal()
-    // Opening focuses the first key, at the bottom of a long list: the name goes first.
-    sheet.current?.scrollTo(0, 0)
-  }, [])
 
   async function reread() {
     setBusy(true)
@@ -348,15 +321,8 @@ function FileSheet({ file, onSignedOut, onClose }: FileSheetProps) {
   }
 
   return (
-    <dialog
-      ref={sheet}
-      onClose={onClose}
-      onClick={(event) => event.target === sheet.current && sheet.current.close()}
-      aria-label={file.name}
-      className="mx-auto mt-auto mb-0 max-h-[85dvh] w-full max-w-md rounded-t-2xl bg-sheet text-fg ring-1 ring-line backdrop:bg-black/60"
-    >
-      <div className="flex flex-col gap-1 px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-        <div aria-hidden="true" className="mb-3 h-1.25 w-9 self-center rounded-full bg-cap-edge" />
+    <Sheet ref={sheet} label={file.name} caption="Протокол" onClose={onClose}>
+      <div className="flex flex-col gap-1">
         <div className="flex flex-col gap-1 pb-3">
           <p className="text-[1.375rem]/7 font-bold break-words">{file.name}</p>
           <FileStatus file={file} />
@@ -405,6 +371,6 @@ function FileSheet({ file, onSignedOut, onClose }: FileSheetProps) {
           Убрать файл
         </button>
       </div>
-    </dialog>
+    </Sheet>
   )
 }

@@ -54,6 +54,23 @@ async function asInstalled(context: BrowserContext) {
   await context.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }))
 }
 
+// Pulls a sheet by the bar at its top, as a finger does, and holds still before letting go: no flick.
+async function pullSheet(page: Page, sheet: Locator, dy: number) {
+  const bar = (await sheet.getByTestId('sheet-handle').boundingBox())!
+  const x = bar.x + bar.width / 2
+  const y = bar.y + 6
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x, y + dy, { steps: 12 })
+  await page.waitForTimeout(150)
+  await page.mouse.up()
+}
+
+// How tall a sheet is on the screen now.
+async function sheetHeight(sheet: Locator): Promise<number> {
+  return (await sheet.getByTestId('sheet').boundingBox())!.height
+}
+
 // What the server holds: the team's list of races, as the next phone to sign in gets it.
 async function racesOnServer(page: Page): Promise<string[]> {
   const response = await page.request.get('/api/races')
@@ -197,7 +214,7 @@ test('keeps qualification protocols without a network and ranks the karts once t
 
   const picker = page.locator('input[type=file]')
   const pdf = (name: string) => ({ name, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF-1.4\n% ${name}\n`) })
-  // The karts are the screen; the protocols are a key away, in a window over it.
+  // The karts are the screen; the protocols are a key away, in a sheet from the bottom.
   const protocols = page.getByRole('dialog', { name: 'Протоколы' })
   const files = protocols.getByRole('listitem')
   const bar = page.getByRole('progressbar', { name: 'Протоколы' })
@@ -225,6 +242,22 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await expect(karts.first()).toHaveText(/^1\s*1\s*40\.899\s*1$/)
   await expect(karts.nth(1)).toHaveText(/^2\s*11\s*41\.167\s*1\s*\+0\.268$/)
 
+  // The screen under a sheet stays where it was: Safari on iPhone would scroll it under an open
+  // window when a finger moves on the window. Nothing scrolls it while the sheet is up, and it is
+  // where it was once the sheet is gone.
+  await page.evaluate(() => window.scrollTo(0, 100))
+  const scrolled = await page.evaluate(() => window.scrollY)
+  expect(scrolled).toBeGreaterThan(0)
+  const table = await karts.first().boundingBox()
+  await page.getByRole('button', { name: /^1 протокол · 13 картов$/ }).click()
+  await expect(files).toHaveCount(1)
+  await page.evaluate(() => window.scrollBy(0, -50))
+  expect(await karts.first().boundingBox()).toEqual(table)
+  // Pulled down by the bar at its top, it goes.
+  await pullSheet(page, protocols, 200)
+  await expect(protocols).toBeHidden()
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolled)
+
   // The same protocol again is not read twice, and its laps count once. A file with a note is
   // told on the key to the protocols.
   await picker.setInputFiles([pdf('Квала 9.pdf')])
@@ -239,6 +272,16 @@ test('keeps qualification protocols without a network and ranks the karts once t
   const sheet = page.getByRole('dialog', { name: 'Квала 9.pdf' })
   await expect(sheet).toContainText('Тот же файл, что «Квала 9.pdf»')
   await expect(sheet.getByRole('row')).toHaveCount(13)
+  // A long sheet opens to part of the screen. Pulled up by its bar it takes the whole screen, and
+  // pulled down a little it goes back.
+  await expect(sheet.getByTestId('sheet')).toHaveAttribute('data-expanded', 'false')
+  const part = await sheetHeight(sheet)
+  await pullSheet(page, sheet, -200)
+  await expect(sheet.getByTestId('sheet')).toHaveAttribute('data-expanded', 'true')
+  await expect.poll(() => sheetHeight(sheet)).toBeGreaterThan(part + 150)
+  await pullSheet(page, sheet, 120)
+  await expect(sheet.getByTestId('sheet')).toHaveAttribute('data-expanded', 'false')
+  await expect.poll(() => sheetHeight(sheet)).toBeCloseTo(part, 0)
   page.once('dialog', (dialog) => dialog.accept())
   await sheet.getByRole('button', { name: 'Убрать файл' }).click()
   await expect(sheet).toBeHidden()
