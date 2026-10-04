@@ -73,7 +73,7 @@ function ThemePicker() {
         role="radiogroup"
         aria-labelledby={label}
         onKeyDown={onKeyDown}
-        className="grid h-12 grid-cols-3 gap-1 rounded-lg bg-field p-1 ring-1 ring-control ring-inset"
+        className="grid h-12 grid-cols-3 gap-1 rounded-lg bg-well p-1 ring-1 ring-control ring-inset"
       >
         {THEMES.map((option) => {
           const chosen = option.theme === theme
@@ -86,7 +86,7 @@ function ThemePicker() {
               tabIndex={chosen ? 0 : -1}
               onClick={() => chooseTheme(option.theme)}
               className={`rounded-md text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-inset ${
-                chosen ? 'bg-control font-semibold text-fg shadow-[var(--shadow-thumb)]' : 'text-fg-3 active:opacity-70'
+                chosen ? 'bg-thumb font-semibold text-fg shadow-[var(--shadow-thumb)]' : 'text-fg-3 active:opacity-70'
               }`}
             >
               {option.label}
