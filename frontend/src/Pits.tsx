@@ -15,6 +15,7 @@ import {
 } from './pitlane.ts'
 import { chooseLanes, paceColour, recordMove, redoMove, resetPits, syncPits, undoMove, usePitLog } from './pits.ts'
 import { syncFiles } from './qualification.ts'
+import { Sheet, type SheetHandle } from './Sheet.tsx'
 import { ActionArea, ArrowUp, History, MainAction, More, Plus, Redo, SHEET, TextField, Undo } from './ui.tsx'
 
 // The pit screen. A team's number is always on the track: a team that comes in joins the end of
@@ -506,14 +507,10 @@ type OtherNumberProps = { lanes: number; onPick: (lane: number, team: string) =>
 // A team that is not in the grid: one with no time in the protocols, or any team before them.
 // Its number is typed in, and the corridor it came into picked; from then on it is in the grid.
 function OtherNumber({ lanes, onPick, onClose }: OtherNumberProps) {
-  const sheet = useRef<HTMLDialogElement>(null)
+  const sheet = useRef<SheetHandle>(null)
+  const field = useRef<HTMLInputElement>(null)
   const [text, setText] = useState('')
   const [wrong, setWrong] = useState(false)
-
-  useEffect(() => {
-    // Opening focuses the field, the first thing in it.
-    sheet.current?.showModal()
-  }, [])
 
   function pick(lane: number) {
     const team = teamNumber(text)
@@ -523,19 +520,13 @@ function OtherNumber({ lanes, onPick, onClose }: OtherNumberProps) {
   }
 
   return (
-    <dialog
-      ref={sheet}
-      onClose={onClose}
-      // A tap on the dimmed screen around it closes it.
-      onClick={(event) => event.target === sheet.current && sheet.current.close()}
-      aria-label="Другой номер"
-      // At the top of the screen: the keyboard takes the bottom half. Selectable again: Safari carries
-      // the screen's no-select into the field, and a field that cannot be selected takes no typing.
-      className={`mx-auto mt-[calc(env(safe-area-inset-top)+1rem)] w-[calc(100%-2rem)] max-w-sm ${SHEET} select-text [-webkit-touch-callout:default] backdrop:bg-black/60`}
-    >
-      <div className="flex flex-col px-4 pt-3 pb-2">
-        <p className="pb-3 text-xs tracking-[0.06em] text-fg-3 uppercase">Другой номер</p>
+    // Opens with the keyboard for the number, and stands above it.
+    <Sheet ref={sheet} label="Другой номер" focus={field} onClose={onClose}>
+      {/* Selectable again: Safari carries the screen's no-select into the field, and a field that
+          cannot be selected takes no typing. */}
+      <div className="flex flex-col select-text [-webkit-touch-callout:default]">
         <TextField
+          ref={field}
           label="Номер"
           value={text}
           onChange={(event) => {
@@ -566,15 +557,8 @@ function OtherNumber({ lanes, onPick, onClose }: OtherNumberProps) {
             </PitKey>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => sheet.current?.close()}
-          className="mt-1 h-12 text-body text-fg-2 active:opacity-70"
-        >
-          Отмена
-        </button>
       </div>
-    </dialog>
+    </Sheet>
   )
 }
 
@@ -592,27 +576,12 @@ type JournalProps = {
 // to the second, and the kart the team went out on. A move kept from before moves had times has none,
 // and neither has one entered again from it.
 function Journal({ moves, took, pace, onClose }: JournalProps) {
-  const sheet = useRef<HTMLDialogElement>(null)
-
-  useEffect(() => {
-    sheet.current?.showModal()
-  }, [])
-
   return (
-    <dialog
-      ref={sheet}
-      onClose={onClose}
-      // A tap on the dimmed screen around it closes it.
-      onClick={(event) => event.target === sheet.current && sheet.current.close()}
-      aria-label="Журнал"
-      className={`mx-auto mt-[calc(env(safe-area-inset-top)+1rem)] max-h-[calc(100dvh-env(safe-area-inset-top)-2rem)] w-[calc(100%-2rem)] max-w-sm flex-col ${SHEET} backdrop:bg-black/60 open:flex`}
-    >
-      <p className="shrink-0 px-4 pt-3 pb-1 text-xs tracking-[0.06em] text-fg-3 uppercase">Журнал</p>
+    <Sheet label="Журнал" onClose={onClose}>
       {moves.length === 0 ? (
-        <p className="px-4 py-6 text-center text-body text-fg-2">Смен ещё нет</p>
+        <p className="py-6 text-center text-body text-fg-2">Смен ещё нет</p>
       ) : (
-        // A long race scrolls inside, under the title and above the key that closes it.
-        <ol className="min-h-0 overflow-y-auto overscroll-contain px-4">
+        <ol>
           {[...moves].reverse().map((move) => {
             const kart = took.get(move.id)
             const known = kart && paceOf(kart, pace)
@@ -637,13 +606,6 @@ function Journal({ moves, took, pace, onClose }: JournalProps) {
           })}
         </ol>
       )}
-      <button
-        type="button"
-        onClick={() => sheet.current?.close()}
-        className="h-12 shrink-0 text-body text-fg-2 active:opacity-70"
-      >
-        Закрыть
-      </button>
-    </dialog>
+    </Sheet>
   )
 }
