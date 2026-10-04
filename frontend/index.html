@@ -10,8 +10,12 @@
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
     <title>Rocket Hunter</title>
-    <!-- The look chosen in the manager's menu, before the first paint (src/theme.ts does the same). -->
+    <!-- The look chosen in the manager's menu, before the first paint (src/theme.ts does the same), and
+         whether the app runs from the Home Screen (src/index.css keeps the screen whole there). -->
     <script>
+      if (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches) {
+        document.documentElement.dataset.standalone = ''
+      }
       try {
         var theme = localStorage.getItem('rocket-hunter.theme')
         var light = theme === 'light' || (theme === 'system' && matchMedia('(prefers-color-scheme: light)').matches)

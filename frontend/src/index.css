@@ -121,6 +121,29 @@
     color-scheme: dark;
   }
 
+  /* An iPhone app from the Home Screen, with its status bar drawn over it, makes the screen only as
+     tall as the page in flow, and no shorter than the screen less the status bar. A sheet takes the
+     page out of flow (its scroll lock fixes the body), so the screen lost the status bar's height at
+     the bottom while a sheet was open, and the sheet ended above a strip of ground (WebKit bugs 210009,
+     237961). The root keeps the whole screen in flow by itself: only lvh and vh are the whole screen
+     there, dvh and % are short. */
+  @supports (-webkit-touch-callout: none) {
+    html[data-standalone] {
+      min-height: 100vh;
+      min-height: 100lvh;
+    }
+  }
+
+  /* Should a phone still keep a strip at the bottom while a sheet is open, it shows the root: the root
+     is the sheet's colour then, and the page keeps its ground on the body over it. */
+  html[data-sheet] {
+    background: var(--color-sheet);
+  }
+
+  html[data-sheet] body {
+    background: var(--color-ground);
+  }
+
   /* Shadows, used as shadow-[var(--shadow-key)]: Tailwind writes a shadow of the theme out in
      full, so the light look could not change it there. */
   :root {

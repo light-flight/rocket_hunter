@@ -161,7 +161,8 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
 
   // The look of the app is chosen here, kept on the phone through a restart, and dark until then.
   const looks = page.getByRole('radiogroup', { name: 'Оформление' })
-  const ground = () => page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)
+  // The ground of the page under the open menu: the body's, as the root is the sheet's colour then.
+  const ground = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor)
   await expect(looks.getByRole('radio', { name: 'Тёмное' })).toBeChecked()
   expect(await ground()).toBe('rgb(6, 6, 7)')
   await looks.getByRole('radio', { name: 'Светлое' }).click()
@@ -276,10 +277,20 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await expect(files).toHaveCount(1)
   await page.evaluate(() => window.scrollBy(0, -50))
   expect(await karts.first().boundingBox()).toEqual(table)
+  // The app knows it runs from the Home Screen, and while a sheet is open the root is the sheet's
+  // colour: an iPhone that keeps a strip at the bottom shows the sheet there, not a gap.
+  const root = page.locator('html')
+  await expect(root).toHaveAttribute('data-standalone', '')
+  await expect(root).toHaveAttribute('data-sheet', '')
+  const colours = () =>
+    page.evaluate(() => [document.documentElement, document.body].map((element) => getComputedStyle(element).backgroundColor))
+  expect(await colours()).toEqual(['rgb(18, 18, 20)', 'rgb(6, 6, 7)'])
   // Pulled down by the bar at its top, it goes.
   await pullSheet(page, protocols, 120)
   await expect(protocols).toBeHidden()
   expect(await page.evaluate(() => window.scrollY)).toBe(scrolled)
+  await expect(root).not.toHaveAttribute('data-sheet')
+  expect((await colours())[0]).toBe('rgb(6, 6, 7)')
 
   // The same protocol again is not read twice, and its laps count once. The model's notes on a file
   // are in the file only: nothing on the key to the protocols or in their list tells of them.
