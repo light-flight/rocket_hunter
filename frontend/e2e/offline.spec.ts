@@ -290,6 +290,14 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await twoFiles.click()
   await expect(files).toHaveCount(2)
   await expect(files.nth(1)).toHaveText(/Квала 9\.pdf\s*Готово · 13 картов$/, { timeout: 15_000 })
+  // Both read, and the fastest kart still has one lap: the server says so, and so does the table.
+  const race = await page.evaluate(() => localStorage.getItem('rocket-hunter.race'))
+  await expect
+    .poll(async () => {
+      const { files: read, karts: ranked } = await (await page.request.get(`/api/races/${race}/qualification_files`)).json()
+      return [read.map((file: { status: string }) => file.status), ranked[0].laps]
+    })
+    .toEqual([['read', 'read'], 1])
   await expect(karts.first()).toHaveText(/^1\s*1\s*40\.899\s*1$/)
   await files.nth(1).click()
   const sheet = page.getByRole('dialog', { name: 'Квала 9.pdf' })
@@ -495,6 +503,7 @@ test('keeps qualification protocols without a network and ranks the karts once t
   // spare put in by hand changed nobody's kart.
   const changed = (row: number) => journal.getByRole('listitem').nth(row).getByRole('img')
   await expect(changed(2)).toHaveAttribute('aria-label', /^Пересел: .+ → быстрый$/)
+  await expect(changed(4)).toHaveAttribute('aria-label', 'Пересел: быстрый → скорость неизвестна')
   await expect(changed(0)).toHaveAttribute('aria-label', 'Пересел: скорость неизвестна → скорость неизвестна')
   await expect(changed(5)).toHaveCount(0)
   // The time 7 was typed in, by the clock of the phone that entered it.

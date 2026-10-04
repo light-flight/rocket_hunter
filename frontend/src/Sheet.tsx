@@ -51,10 +51,13 @@ export function Sheet({ label, focus, children, onClose, ref }: SheetProps) {
   // Below the screen until it has slid in, and again on its way out.
   const [shown, setShown] = useState(focus !== undefined)
   const keyboard = useKeyboardInset()
-  // A field in the sheet has the focus: only then is there a keyboard to stand above. A strip the
-  // browser keeps at the bottom of the screen is no keyboard (Chrome on iPhone).
+  // A sheet stands above the keyboard once a field in it has had the focus: a sheet with no field
+  // has no keyboard, and a strip the browser keeps at the bottom of the screen is none (Chrome on
+  // iPhone). It follows the keyboard down as it goes, not the focus: a tap on a key takes the focus
+  // from the field before the click, and the key must not move away under the finger then.
   const [typing, setTyping] = useState(false)
   const lift = typing ? keyboard : 0
+  const dimmed = useRef(false)
   const [expanded, setExpanded] = useState(false)
   // How far the finger has taken the sheet from the height it had: down by its offset, up by the
   // height it adds.
@@ -67,6 +70,7 @@ export function Sheet({ label, focus, children, onClose, ref }: SheetProps) {
     dialog.current?.showModal()
     lockScroll()
     dimStatusBar(true)
+    dimmed.current = true
     focus?.current?.focus({ preventScroll: true })
     // Laid out below the screen first, so that it slides in from there.
     panel.current?.getBoundingClientRect()
@@ -74,15 +78,23 @@ export function Sheet({ label, focus, children, onClose, ref }: SheetProps) {
     return () => {
       cancelAnimationFrame(frame)
       unlockScroll()
-      dimStatusBar(false)
+      undim()
     }
   }, [focus])
+
+  // The status bar of an Android phone lightens as the sheet goes, with the screen.
+  function undim() {
+    if (!dimmed.current) return
+    dimmed.current = false
+    dimStatusBar(false)
+  }
 
   function close() {
     if (closing.current) return
     closing.current = true
     setMoved(null)
     setShown(false)
+    undim()
     window.setTimeout(() => dialog.current?.close(), MOVE_MS)
   }
 
@@ -182,8 +194,7 @@ export function Sheet({ label, focus, children, onClose, ref }: SheetProps) {
               ? full(lift)
               : `min(${HALF * 100}dvh, ${full(lift)})`,
         }}
-        onFocus={(event) => setTyping(event.target.matches('input, textarea, [contenteditable]'))}
-        onBlur={() => setTyping(false)}
+        onFocus={(event) => event.target.matches('input, textarea, [contenteditable]') && setTyping(true)}
       >
         <div
           data-testid="sheet-handle"
