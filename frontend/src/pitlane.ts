@@ -60,16 +60,11 @@ export function lastMove(log: Moves): PitMove | null {
   return standing(log).at(-1) ?? null
 }
 
-// How far another phone's clock may run ahead of this one's for a move entered here still to join
-// the end.
-export const CLOCKS_APART_MS = 60_000
-
-// The time for a move entered now: after the last move that stands, so a team dropped into a
-// corridor joins its end, when another phone's clock runs a little ahead of this one's. A clock far
-// ahead is not followed: the journal would show every move entered here at that phone's time.
+// The time for a move entered now: now, but never before the last move that stands, so a move
+// entered always goes last, whatever the clock does.
 export function nextTime(log: Moves, now: number): number {
   const last = standing(log).at(-1)?.at
-  return last !== undefined && last >= now && last - now < CLOCKS_APART_MS ? last + 1 : now
+  return last !== undefined && last >= now ? last + 1 : now
 }
 
 // Two logs put together: every move and every undo of both, each once.

@@ -274,29 +274,47 @@ test('undo takes back the last stop only, even when the same team came in just b
   assert.equal(lastMove(log(['a=0:5@10'], ['a'])), null)
 })
 
-test('a move entered now goes after the last that stands when the other phone’s clock is a little ahead', () => {
+test('a move entered now always goes after the last that stands', () => {
   const pits = log(['a=0:5@10', 'b=0:9@30'], ['b'])
 
   assert.equal(nextTime(pits, 20 * MINUTE), 20 * MINUTE)
-  assert.equal(nextTime(pits, 9.5 * MINUTE), 10 * MINUTE + 1)
+  assert.equal(nextTime(pits, 10 * MINUTE), 10 * MINUTE + 1)
+  // The clock went back: the move still goes last.
+  assert.equal(nextTime(pits, 1 * MINUTE), 10 * MINUTE + 1)
   assert.equal(nextTime(log([]), 7), 7)
-  // A clock a minute or more behind is not followed: its moves stand by its own time.
-  assert.equal(nextTime(pits, 9 * MINUTE), 9 * MINUTE)
 })
 
-test('a clock far behind the other phone’s keeps every stop of a team', () => {
-  // Phone B, 20 minutes ahead, entered 7 into corridor 0. Phone A then enters 5 into corridor 0
-  // twice, a stint apart: both stops stand.
-  let pits = log(['b=0:7@40'])
-  for (const [id, minute] of [
-    ['a1', 21],
-    ['a2', 36],
-  ] as const) {
-    const move = { id, lane: 0, kart: '5', at: nextTime(pits, minute * MINUTE) }
-    pits = { moves: [...pits.moves, move], undone: [] }
+test('any number changes karts in any corridor any number of times, first in, first out', () => {
+  // 3 corridors with 2 spares each, 6 teams, 3000 stops: any team into any corridor, the same one
+  // again and again too, all entered in the same millisecond. Checked against plain queues.
+  let pits: Moves = { moves: [], undone: [] }
+  const enter = (lane: number, kart: string | null) => {
+    pits = { moves: [...pits.moves, { id: `m${pits.moves.length}`, lane, kart, at: nextTime(pits, 0) }], undone: [] }
+  }
+  const queues: string[][] = [[], [], []]
+  const on = new Map<string, string>()
+  let spares = 0
+  for (const lane of [0, 0, 1, 1, 2, 2]) {
+    enter(lane, null)
+    queues[lane].push(`s${spares++}`)
+  }
+  let seed = 7
+  const random = (n: number) => (seed = (seed * 48271) % 2147483647) % n
+  for (let stop = 0; stop < 3000; stop++) {
+    const team = String(random(6) + 1)
+    const lane = random(3)
+    enter(lane, team)
+    queues[lane].push(on.get(team) ?? `q${team}`)
+    on.set(team, queues[lane].shift()!)
   }
 
-  assert.deepEqual(stand(pits), ['a1=0:5', 'a2=0:5', 'b=0:7'])
+  const replayed = replay(standing(pits))
+  assert.equal(standing(pits).length, 3006)
+  assert.deepEqual(
+    replayed.corridors.map((queue) => queue.map((kart) => kart.id)),
+    queues,
+  )
+  for (const [team, kart] of on) assert.equal(kartOf(replayed.riding, team).id, kart)
 })
 
 test('an old log turns into the same moves on the phone and on the server, before any new one', () => {
