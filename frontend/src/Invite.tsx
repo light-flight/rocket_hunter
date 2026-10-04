@@ -49,7 +49,7 @@ export function Invite({ onSessionExpired }: InviteProps) {
     return (
       <div className="flex flex-col gap-2">
         {failed && (
-          <p role="alert" className="text-center text-sm text-amber-400">Не удалось создать приглашение. Попробуйте ещё раз.</p>
+          <p role="alert" className="text-center text-sm text-warn">Не удалось создать приглашение. Попробуйте ещё раз.</p>
         )}
         <button type="button" onClick={create} disabled={creating} className={BUTTON}>
           Пригласить менеджера

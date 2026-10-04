@@ -146,7 +146,8 @@ export function Palm({ size = 'full' }: { size?: keyof typeof PALM_SIZES }) {
 
   return (
     <div aria-hidden="true" className={`absolute inset-x-0 bottom-0 -z-10 overflow-hidden ${height}`}>
-      <img src={palmTiles} alt="" className={image} />
+      {/* In the light look the tiles are pale rubber on a pale ground; the gloss stays white. */}
+      <img src={palmTiles} alt="" className={`${image} light:invert`} />
       <Glints src={palmGlints} patches={PALM_LIGHT} className={image} />
       <div className={`absolute inset-x-0 top-0 bg-linear-to-b from-ground from-14% to-transparent ${fade}`} />
       <div className={`${side} left-0 bg-linear-to-r`} />

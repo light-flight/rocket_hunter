@@ -158,6 +158,23 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
   await page.getByRole('button', { name: 'Менеджер: Иван Петров' }).click()
   await expect(page.getByTestId('current-user')).toHaveText('Иван Петров')
   await expect(page.getByTestId('offline-ready')).toHaveText('готово')
+
+  // The look of the app is chosen here, kept on the phone through a restart, and dark until then.
+  const looks = page.getByRole('radiogroup', { name: 'Оформление' })
+  const ground = () => page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)
+  await expect(looks.getByRole('radio', { name: 'Тёмное' })).toBeChecked()
+  expect(await ground()).toBe('rgb(6, 6, 7)')
+  await looks.getByRole('radio', { name: 'Светлое' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  expect(await ground()).toBe('rgb(242, 242, 245)')
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#f2f2f5')
+  await page.getByRole('button', { name: 'Все гонки' }).click()
+  await page.getByRole('button', { name: 'Менеджер: Иван Петров' }).click()
+  await looks.getByRole('radio', { name: 'Тёмное' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  expect(await ground()).toBe('rgb(6, 6, 7)')
   await page.keyboard.press('Escape')
 
   // A lost session asks to sign in again, but leaves the app on screen.
@@ -264,19 +281,19 @@ test('keeps qualification protocols without a network and ranks the karts once t
   await expect(protocols).toBeHidden()
   expect(await page.evaluate(() => window.scrollY)).toBe(scrolled)
 
-  // The same protocol again is not read twice, and its laps count once. A file with a note is
-  // told on the key to the protocols.
+  // The same protocol again is not read twice, and its laps count once. The model's notes on a file
+  // are in the file only: nothing on the key to the protocols or in their list tells of them.
   await picker.setInputFiles([pdf('Квала 9.pdf')])
-  const noted = page.getByRole('button', { name: /^2 протокола · 13 картов · есть замечания$/ })
-  await expect(noted).toBeVisible({ timeout: 15_000 })
+  const twoFiles = page.getByRole('button', { name: /^2 протокола · 13 картов$/ })
+  await expect(twoFiles).toBeVisible({ timeout: 15_000 })
   await expect(karts.first()).toHaveText(/^1\s*1\s*40\.899\s*1$/)
 
-  await noted.click()
+  await twoFiles.click()
   await expect(files).toHaveCount(2)
-  await expect(files.nth(1)).toContainText('есть замечания')
+  await expect(files.nth(1)).toHaveText(/Квала 9\.pdf\s*Готово · 13 картов$/, { timeout: 15_000 })
   await files.nth(1).click()
   const sheet = page.getByRole('dialog', { name: 'Квала 9.pdf' })
-  await expect(sheet).toContainText('Тот же файл, что «Квала 9.pdf»')
+  await expect(sheet.getByRole('list', { name: 'Замечания' })).toHaveText('·Тот же файл, что «Квала 9.pdf»')
   await expect(sheet.getByRole('row')).toHaveCount(13)
   // A long sheet opens to part of the screen. Pulled up by its bar it takes the whole screen, and
   // pulled down a little it goes back.
@@ -463,16 +480,23 @@ test('keeps qualification protocols without a network and ranks the karts once t
   const entered = (stop: string) => new RegExp(`^\\d\\d:\\d\\d:\\d\\d\\s*${stop}$`)
   await page.getByRole('button', { name: 'Журнал' }).click()
   await expect(journal.getByRole('listitem')).toHaveText([
-    entered('Номер 7 → коридор 1'),
-    entered('Номер 1 → коридор 1'),
-    entered('Номер 9 → коридор 2'),
-    entered('Номер 5 → коридор 2'),
-    entered('Номер 1 → коридор 2'),
-    entered('Запасной карт → коридор 2'),
-    entered('Запасной карт → коридор 2'),
-    entered('Запасной карт → коридор 1'),
-    entered('Запасной карт → коридор 1'),
+    entered('Номер 7 · коридор 1'),
+    entered('Номер 1 · коридор 1'),
+    entered('Номер 9 · коридор 2'),
+    entered('Номер 5 · коридор 2'),
+    entered('Номер 1 · коридор 2'),
+    entered('Запасной карт · коридор 2'),
+    entered('Запасной карт · коридор 2'),
+    entered('Запасной карт · коридор 1'),
+    entered('Запасной карт · коридор 1'),
   ])
+  // A stop tells the kart the team came in on and the one it went out on: 9 came on its own kart
+  // and went out on the kart of 1, the fastest; 7, typed in, on karts nobody knows the pace of. A
+  // spare put in by hand changed nobody's kart.
+  const changed = (row: number) => journal.getByRole('listitem').nth(row).getByRole('img')
+  await expect(changed(2)).toHaveAttribute('aria-label', /^Пересел: .+ → быстрый$/)
+  await expect(changed(0)).toHaveAttribute('aria-label', 'Пересел: скорость неизвестна → скорость неизвестна')
+  await expect(changed(5)).toHaveCount(0)
   // The time 7 was typed in, by the clock of the phone that entered it.
   const seven = (await pitsOnServer()).moves.find((move) => move.kart === '7')!.at
   const time = await page.evaluate(
@@ -771,7 +795,7 @@ test('a driver changes karts in the same corridor as often as they come in', asy
   // Every one of the five stops is in the journal, and on the server.
   await page.getByRole('button', { name: 'Журнал' }).click()
   await expect(page.getByRole('dialog', { name: 'Журнал' }).getByRole('listitem')).toHaveText(
-    [...Array(5).fill(/Номер 12 → коридор 1/), /Запасной карт/, /Запасной карт/],
+    [...Array(5).fill(/Номер 12 · коридор 1/), /Запасной карт/, /Запасной карт/],
   )
   const raceId = await page.evaluate(() => localStorage.getItem('rocket-hunter.race'))
   await expect

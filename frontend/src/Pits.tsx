@@ -16,7 +16,7 @@ import {
 import { chooseLanes, paceColour, recordMove, redoMove, resetPits, syncPits, undoMove, usePitLog } from './pits.ts'
 import { syncFiles } from './qualification.ts'
 import { Sheet, type SheetHandle } from './Sheet.tsx'
-import { ActionArea, ArrowUp, History, MainAction, More, Plus, Redo, SHEET, TextField, Undo } from './ui.tsx'
+import { ActionArea, ArrowRight, ArrowUp, History, MainAction, More, Plus, Redo, SHEET, TextField, Undo } from './ui.tsx'
 
 // The pit screen. A team's number is always on the track: a team that comes in joins the end of
 // a corridor, its driver gets into the kart at the front, and the number is moved onto it. So the
@@ -46,7 +46,7 @@ const ASK_MS = 3000
 // ground otherwise. One nobody knows the pace of has no colour at all, only a bold dashed edge,
 // light enough to see on the black of a corridor. The key for another number is dashed too, but
 // thinner and darker: it is not a kart.
-const KNOWN = 'ring-1 ring-white/8 ring-inset'
+const KNOWN = 'ring-1 ring-tile-edge ring-inset'
 const UNKNOWN = 'outline-2 -outline-offset-2 outline-dashed outline-fg-3'
 const OTHER = 'outline-1 -outline-offset-1 outline-dashed outline-fg-off'
 
@@ -85,7 +85,7 @@ export function Pits({ race, karts, onQualification, onSignedOut }: PitsProps) {
   if (log === undefined) return null
   if (log === null) {
     return (
-      <p role="alert" className="mt-6 text-center text-sm text-amber-400">
+      <p role="alert" className="mt-6 text-center text-sm text-warn">
         Не удалось прочитать пит-стопы на телефоне.
       </p>
     )
@@ -277,7 +277,7 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
         </button>
         {more && (
           <>
-            <div className="fixed inset-0 z-40 bg-black/45" onClick={() => setMore(false)} />
+            <div className="fixed inset-0 z-40 bg-dim" onClick={() => setMore(false)} />
             <div role="menu" aria-label="Пит-стопы" className={`absolute top-full right-0 z-50 mt-1 w-65 overflow-hidden ${SHEET}`}>
               <button
                 type="button"
@@ -319,11 +319,11 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
               drag?.over === lane ? 'border-solid border-fg bg-lane-over' : 'border-dashed border-line bg-lane'
             }`}
           >
-            {/* A kart in a corridor has no number: the number went out on the kart at the front. */}
+            {/* A kart in a corridor has no number: the number went out on the kart at the front, the
+                one nearest the track. A square, as the numbers below are: when the corridor is full
+                they get lower to fit, and stay as wide. */}
             {queue.map((kart, place) => {
               const known = paceOf(kart, pace)
-              // The kart at the front goes out next.
-              const edge = place === 0 ? 'ring-2 ring-fg' : known === undefined ? '' : KNOWN
               return (
                 <div
                   key={kart.id}
@@ -332,8 +332,8 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
                   data-testid="corridor-kart"
                   data-kart={kart.id}
                   data-pace={known ?? 'unknown'}
-                  className={`min-h-8 shrink basis-30.5 rounded-[26px_26px_12px_12px] ${edge} ${
-                    known === undefined ? UNKNOWN : ''
+                  className={`aspect-square min-h-8 w-full max-w-30 shrink self-center rounded-lg ${
+                    known === undefined ? UNKNOWN : KNOWN
                   }`}
                   style={{ background: fill(known) }}
                 />
@@ -375,7 +375,7 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
               onPointerUp={endDrag}
               onPointerCancel={() => setDrag(null)}
               className={`flex touch-none items-center justify-center rounded-lg font-extrabold tabular-nums ${tile} ${
-                known === undefined ? UNKNOWN : KNOWN
+                known === undefined ? UNKNOWN : `${KNOWN} text-on-pace`
               } ${drag?.team === team ? 'opacity-25' : ''}`}
               style={{ background: fill(known) }}
             >
@@ -410,8 +410,8 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
         <div
           aria-hidden="true"
           // A kart of no known pace has no colour, but the ground under it, not the tiles it passes.
-          className={`pointer-events-none fixed z-50 flex scale-115 items-center justify-center rounded-lg font-extrabold tabular-nums shadow-[0_0_0_2px_var(--color-fg),0_14px_30px_rgb(0_0_0/0.85)] ${tile} ${
-            riding(drag.team) === undefined ? `${UNKNOWN} bg-ground` : ''
+          className={`pointer-events-none fixed z-50 flex scale-115 items-center justify-center rounded-lg font-extrabold tabular-nums shadow-[var(--shadow-lift)] ${tile} ${
+            riding(drag.team) === undefined ? `${UNKNOWN} bg-ground` : 'text-on-pace'
           }`}
           style={{
             left: drag.x - drag.width / 2,
@@ -427,7 +427,7 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
 
       {menu && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/45" onClick={() => held.current || setMenu(null)} />
+          <div className="fixed inset-0 z-40 bg-dim" onClick={() => held.current || setMenu(null)} />
           <div
             role="menu"
             aria-label={`Коридор ${menu.lane + 1}`}
@@ -459,7 +459,9 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
         />
       )}
 
-      {journal && <Journal moves={moves} took={pitlane.took} pace={pace} onClose={() => setJournal(false)} />}
+      {journal && (
+        <Journal moves={moves} came={pitlane.came} took={pitlane.took} pace={pace} onClose={() => setJournal(false)} />
+      )}
     </div>
   )
 }
@@ -545,7 +547,7 @@ function OtherNumber({ lanes, onPick, onClose }: OtherNumberProps) {
           autoComplete="off"
         />
         {wrong && (
-          <p role="alert" className="pt-2 text-sm text-amber-400">
+          <p role="alert" className="pt-2 text-sm text-warn">
             Номер — до трёх цифр, можно с буквой: 7, 12A
           </p>
         )}
@@ -567,15 +569,16 @@ const TIME = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digi
 
 type JournalProps = {
   moves: PitMove[]
+  came: ReadonlyMap<string, PitKart>
   took: ReadonlyMap<string, PitKart>
   pace: ReadonlyMap<string, number>
   onClose: () => void
 }
 
 // Every move that stands, the last first: which team came into which corridor, when it was entered
-// to the second, and the kart the team went out on. A move kept from before moves had times has none,
-// and neither has one entered again from it.
-function Journal({ moves, took, pace, onClose }: JournalProps) {
+// to the second, and the karts it changed: the one it came in on, an arrow, the one it went out on.
+// A move kept from before moves had times has none, and neither has one entered again from it.
+function Journal({ moves, came, took, pace, onClose }: JournalProps) {
   return (
     <Sheet label="Журнал" onClose={onClose}>
       {moves.length === 0 ? (
@@ -583,23 +586,26 @@ function Journal({ moves, took, pace, onClose }: JournalProps) {
       ) : (
         <ol>
           {[...moves].reverse().map((move) => {
-            const kart = took.get(move.id)
-            const known = kart && paceOf(kart, pace)
+            const from = came.get(move.id)
+            const to = took.get(move.id)
             return (
               <li key={move.id} className="flex min-h-12 items-center gap-3 border-b border-control text-body">
                 <span className="w-17 shrink-0 text-fg-2 tabular-nums">{untimed(move) ? '—' : TIME.format(move.at)}</span>
                 {/* On a narrow phone the corridor goes under the number, never apart. */}
                 <span className="min-w-0 flex-1">
                   <span className="whitespace-nowrap">{move.kart === null ? 'Запасной карт' : `Номер ${move.kart}`}</span>{' '}
-                  <span className="whitespace-nowrap text-fg-2">→ коридор {move.lane + 1}</span>
+                  <span className="whitespace-nowrap text-fg-2">· коридор {move.lane + 1}</span>
                 </span>
-                {kart && (
+                {from && to && (
                   <span
                     role="img"
-                    aria-label={`Уехал на карте: ${paceWord(known)}`}
-                    className={`size-6 shrink-0 rounded-md ${known === undefined ? UNKNOWN : KNOWN}`}
-                    style={{ background: fill(known) }}
-                  />
+                    aria-label={`Пересел: ${paceWord(paceOf(from, pace))} → ${paceWord(paceOf(to, pace))}`}
+                    className="flex shrink-0 items-center gap-1.5 text-fg-3"
+                  >
+                    <JournalKart pace={paceOf(from, pace)} />
+                    <ArrowRight />
+                    <JournalKart pace={paceOf(to, pace)} />
+                  </span>
                 )}
               </li>
             )
@@ -607,5 +613,12 @@ function Journal({ moves, took, pace, onClose }: JournalProps) {
         </ol>
       )}
     </Sheet>
+  )
+}
+
+// A kart in the journal: a small tile of its pace, or dashed when nobody knows it.
+function JournalKart({ pace }: { pace: number | undefined }) {
+  return (
+    <span className={`size-6 shrink-0 rounded-md ${pace === undefined ? UNKNOWN : KNOWN}`} style={{ background: fill(pace) }} />
   )
 }

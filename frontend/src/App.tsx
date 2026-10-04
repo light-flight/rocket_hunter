@@ -45,6 +45,9 @@ function App() {
     // The top starts right under the status bar, which the iPhone draws over the app: the way back
     // and the title have room enough around them of their own.
     <main className="relative isolate mx-auto flex min-h-dvh max-w-md flex-col gap-4 px-4 pt-[max(env(safe-area-inset-top),0.5rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+      {/* An iPhone app draws its status bar white over the app: in the light look it stands on a dark
+          strip, or it could not be read. Elsewhere the strip has no height. */}
+      <div aria-hidden="true" className="fixed inset-x-0 top-0 z-30 h-[env(safe-area-inset-top)] bg-status-bar" />
       {needRefresh && (
         <button
           type="button"
@@ -61,7 +64,7 @@ function App() {
           {auth.expired && (
             <section
               data-testid="session-expired"
-              className="flex flex-col gap-3 rounded-2xl bg-amber-400/10 p-4"
+              className="flex flex-col gap-3 rounded-2xl bg-warn/10 p-4"
             >
               <p>Нужно войти снова. Работать можно: записи сохраняются на телефоне.</p>
               <SignIn onSignedIn={auth.signedIn} />

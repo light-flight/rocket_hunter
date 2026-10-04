@@ -114,6 +114,24 @@ test('each stop tells the kart the team went out on', () => {
   )
 })
 
+test('each stop tells the kart the team came in on: the one it went out on the last time', () => {
+  const pits = replay(moves('a=0:?', 'b=0:?', 'c=0:1', 'd=0:5', 'e=0:1', 'f=1:9'))
+
+  assert.deepEqual(
+    [...pits.came].map(([id, kart]) => [id, kart.id]),
+    [
+      ['c', 'q1'],
+      ['d', 'q5'],
+      ['e', 's0'],
+      ['f', 'q9'],
+    ],
+  )
+  // A stop into an empty corridor: the team goes out on the kart it came in on.
+  assert.equal(pits.came.get('f')?.id, pits.took.get('f')?.id)
+  // Spares put in by hand are no team's stop.
+  assert.equal(pits.came.has('a'), false)
+})
+
 test('the corridors are the number chosen, or with none chosen the ones the moves use', () => {
   assert.equal(lanesOf(2, []), 2)
   assert.equal(lanesOf(2, moves('2:5')), 2)

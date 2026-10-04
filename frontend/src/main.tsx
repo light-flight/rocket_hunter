@@ -5,6 +5,9 @@ import '@fontsource-variable/sofia-sans-semi-condensed'
 import '@fontsource/russo-one/latin-400.css'
 import './index.css'
 import App from './App.tsx'
+import { watchTheme } from './theme.ts'
+
+watchTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

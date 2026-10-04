@@ -10,10 +10,10 @@ import {
 } from 'react'
 import { useKeyboardInset } from './keyboard.ts'
 
-// A sheet that slides up from the bottom of the screen, as in the phone's own apps. Its top, the bar
-// and the caption under it, is one wide place to take it by: pulled up it opens a long sheet to the
-// whole screen, pulled down it closes. It also closes by a tap on the dimmed screen above it and by
-// Escape; it has no key to close it but for those who listen to the screen. The screen under it
+// A sheet that slides up from the bottom of the screen, as in the phone's own apps. It has no title:
+// its top is a bar, and a wide place round the bar to take it by: pulled up it opens a long sheet to
+// the whole screen, pulled down it closes. It also closes by a tap on the dimmed screen above it and
+// by Escape; it has no key to close it but for those who listen to the screen. The screen under it
 // stays still, and the sheet stands above the keyboard.
 
 // How long a sheet takes to move, and how it moves: fast at first, then easing in, as the phone's own.
@@ -30,9 +30,8 @@ const TAP_PX = 4
 export type SheetHandle = { close: () => void }
 
 type SheetProps = {
-  // What the sheet is called for those who listen to the screen, and over its top, small.
+  // What the sheet is called, for those who listen to the screen.
   label: string
-  caption?: string
   // A field typed in at once: it has the keyboard from the tap that opened the sheet, so the sheet
   // is there at once rather than sliding in.
   focus?: RefObject<HTMLElement | null>
@@ -43,7 +42,7 @@ type SheetProps = {
 
 type Pull = { pointer: number; from: number; height: number; trail: { y: number; t: number }[] }
 
-export function Sheet({ label, caption = label, focus, children, onClose, ref }: SheetProps) {
+export function Sheet({ label, focus, children, onClose, ref }: SheetProps) {
   const dialog = useRef<HTMLDialogElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const body = useRef<HTMLDivElement>(null)
@@ -157,14 +156,16 @@ export function Sheet({ label, caption = label, focus, children, onClose, ref }:
       <div
         aria-hidden="true"
         onClick={close}
-        className={`absolute inset-0 bg-black/60 ${moved ? '' : `transition-opacity ${MOVE}`}`}
+        className={`absolute inset-0 bg-scrim ${moved ? '' : `transition-opacity ${MOVE}`}`}
         style={{ opacity: shown ? Math.max(0, 1 - down / Math.max(1, moved?.height ?? 1)) : 0 }}
       />
       <div
         ref={panel}
         data-testid="sheet"
         data-expanded={expanded}
-        className={`absolute inset-x-0 bottom-0 mx-auto flex max-w-md flex-col rounded-t-2xl bg-sheet shadow-[0_0_0_1px_var(--color-line),0_-12px_40px_rgb(0_0_0/0.6)] ${
+        // Its colour goes on below its edge: should a browser keep a strip at the bottom of the
+        // screen, or the sheet stand a little above it, the strip is the sheet, not a gap.
+        className={`absolute inset-x-0 bottom-0 mx-auto flex max-w-md flex-col rounded-t-2xl bg-sheet shadow-[var(--shadow-sheet)] after:absolute after:inset-x-0 after:top-full after:h-[50dvh] after:bg-sheet ${
           moved ? '' : `transition-[translate,max-height,bottom] ${MOVE} motion-reduce:transition-none`
         }`}
         style={{
@@ -183,10 +184,11 @@ export function Sheet({ label, caption = label, focus, children, onClose, ref }:
           onPointerMove={follow}
           onPointerUp={release}
           onPointerCancel={release}
-          className="flex shrink-0 cursor-grab touch-none flex-col gap-3 px-4 pt-2 pb-3 select-none active:cursor-grabbing"
+          // The bar is small, the place to take it by is not: the whole width, and a little above the
+          // sheet's edge too.
+          className="-mt-4 flex shrink-0 cursor-grab touch-none justify-center pt-6 pb-4 select-none active:cursor-grabbing"
         >
-          <div aria-hidden="true" className="h-1.25 w-9 self-center rounded-full bg-cap-edge" />
-          <p className="text-xs tracking-[0.06em] text-fg-3 uppercase">{caption}</p>
+          <div aria-hidden="true" className="h-1.25 w-9 rounded-full bg-cap-edge" />
           <button type="button" onClick={close} className="sr-only">
             Закрыть
           </button>

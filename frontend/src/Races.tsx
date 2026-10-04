@@ -173,7 +173,7 @@ function RaceFields({ initial, action, autoFocus = false, onSubmit, children }: 
       {children(field)}
       <ActionArea>
         {failed && (
-          <p role="alert" className="text-center text-sm text-amber-400">
+          <p role="alert" className="text-center text-sm text-warn">
             Не удалось сохранить гонку на телефоне.
           </p>
         )}
@@ -427,12 +427,12 @@ function RaceScreen({ race, onBack, onEdit, onFilesAdded, onSignedOut }: RaceScr
       <input ref={picker} type="file" multiple accept={ACCEPT} onChange={pick} hidden />
 
       {files === null && (
-        <p role="alert" className="mt-6 text-center text-sm text-amber-400">
+        <p role="alert" className="mt-6 text-center text-sm text-warn">
           Не удалось прочитать протоколы на телефоне.
         </p>
       )}
       {saveFailed && (
-        <p role="alert" className="mt-6 text-center text-sm text-amber-400">
+        <p role="alert" className="mt-6 text-center text-sm text-warn">
           Не удалось сохранить файлы на телефоне. Попробуйте добавить их ещё раз.
         </p>
       )}

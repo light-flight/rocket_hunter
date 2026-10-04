@@ -28,7 +28,7 @@ export function MainAction({
   const className =
     'flex h-15 w-full shrink-0 items-center justify-center gap-2.5 rounded-lg px-4 text-key font-semibold ' +
     'tracking-key uppercase active:opacity-70 disabled:opacity-50 ' +
-    (secondary ? 'bg-control text-fg ring-1 ring-line ring-inset' : 'bg-action text-on-action shadow-key')
+    (secondary ? 'bg-control text-fg ring-1 ring-line ring-inset' : 'bg-action text-on-action shadow-[var(--shadow-key)]')
 
   if (href !== undefined) {
     return (
@@ -99,7 +99,7 @@ export function BackLink({ children, onClick, arrow = false, label }: BackLinkPr
 }
 
 // A menu raised over the screen, by the key or the corridor it opens from.
-export const SHEET = 'rounded-xl bg-sheet text-fg shadow-[0_0_0_1px_var(--color-line),0_18px_40px_rgb(0_0_0/0.8)]'
+export const SHEET = 'rounded-xl bg-sheet text-fg shadow-[var(--shadow-menu)]'
 
 const ICON = 'shrink-0 fill-none stroke-current [stroke-linecap:round] [stroke-linejoin:round]'
 
@@ -183,12 +183,20 @@ export function Spinner() {
   )
 }
 
-// Something the manager should look at: a triangle with an exclamation mark.
-export function Attention() {
+// What did not work out: a cross, the other side of the check.
+export function Cross() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 stroke-[1.8] ${ICON}`}>
-      <path d="M10.3 4.2L2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z" />
-      <path d="M12 9.5v4M12 17v.01" />
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 stroke-2 ${ICON}`}>
+      <path d="M7 7l10 10M17 7L7 17" />
+    </svg>
+  )
+}
+
+// One thing turned into another: an arrow to the right.
+export function ArrowRight() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-4 stroke-2 ${ICON}`}>
+      <path d="M5 12h14M13 6l6 6-6 6" />
     </svg>
   )
 }
