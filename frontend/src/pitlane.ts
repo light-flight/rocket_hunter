@@ -46,50 +46,27 @@ export type Pitlane = {
   took: Map<string, PitKart>
 }
 
-// Two phones that entered the same team into the same corridor this close together entered the
-// same stop: a stop takes about a minute, and a team comes in again only a stint later.
-export const SAME_STOP_MS = 2 * 60_000
-
 // The moves that stand, in the order they were entered: a corridor hands its karts out in the order
-// the teams came. A stop entered on two phones counts once, as the one entered first. Spare karts
-// are never taken for one another: several go into a corridor at once before the start.
+// the teams came, first in, first out. Every move that is not undone stands: a team may come into the
+// same corridor again and again, as often and as soon as it likes, and each time the number goes onto
+// the kart at the front. A stop entered twice by mistake is taken back with «Отменить».
 export function standing(log: Moves): PitMove[] {
   const undone = new Set(log.undone)
-  const kept: PitMove[] = []
-  const last = new Map<string, PitMove>()
-  for (const move of log.moves.filter((move) => !undone.has(move.id)).sort(byTime)) {
-    if (move.kart !== null) {
-      const stop = `${move.lane} ${move.kart}`
-      const before = last.get(stop)
-      if (before && move.at - before.at <= SAME_STOP_MS) continue
-      last.set(stop, move)
-    }
-    kept.push(move)
-  }
-  return kept
+  return log.moves.filter((move) => !undone.has(move.id)).sort(byTime)
 }
 
-// What "undo" takes back: the last move that stands, and the same stop entered on another phone.
-// null when nothing stands.
-export function lastMove(log: Moves): { move: PitMove; ids: string[] } | null {
-  const move = standing(log).at(-1)
-  if (!move) return null
-  const undone = new Set(log.undone)
-  const ids = log.moves
-    .filter((other) => other.id === move.id || (!undone.has(other.id) && sameStop(other, move)))
-    .map((other) => other.id)
-  return { move, ids }
+// What "undo" takes back: the last move that stands. null when nothing stands.
+export function lastMove(log: Moves): PitMove | null {
+  return standing(log).at(-1) ?? null
 }
 
 // How far another phone's clock may run ahead of this one's for a move entered here still to join
-// the end. Moves pushed past it stand a millisecond apart, and two of them are never two stops of
-// one team: a team comes into a corridor again only a stint later.
+// the end.
 export const CLOCKS_APART_MS = 60_000
 
 // The time for a move entered now: after the last move that stands, so a team dropped into a
 // corridor joins its end, when another phone's clock runs a little ahead of this one's. A clock far
-// ahead is not followed: moves pushed after it would stand a millisecond apart for as long as it is
-// ahead, and the same team's next stop would be taken for one stop entered on two phones.
+// ahead is not followed: the journal would show every move entered here at that phone's time.
 export function nextTime(log: Moves, now: number): number {
   const last = standing(log).at(-1)?.at
   return last !== undefined && last >= now && last - now < CLOCKS_APART_MS ? last + 1 : now
@@ -110,16 +87,16 @@ export function union(a: Moves, b: Moves): Moves {
 // The moves of a log kept before moves had ids and times: the ones that stood, in order. Their
 // ids come from their place and what they are, so the phone and the server, each turning the same
 // old log, give the same moves; a move only one of them had gets an id of its own. For a time they
-// get their place, a little more than SAME_STOP_MS apart, so that two stops of a team in an old log
-// are never taken for one stop entered on two phones. The migration that turned the server's old
-// logs (db/migrate/20261003120000_keep_pit_moves_with_ids.rb) does the same.
+// get their place, OLD_STEP apart, so they stand in their order, before every move entered since.
+// The migration that turned the server's old logs (db/migrate/20261003120000_keep_pit_moves_with_ids.rb)
+// does the same, with the same step: the ids and isOld depend on it.
 export function fromOldLog(moves: readonly { lane: number; kart: string | null }[], count: number): PitMove[] {
   return moves
     .slice(0, count)
     .map((move, place) => ({ id: oldId(place, move), lane: move.lane, kart: move.kart, at: place * OLD_STEP }))
 }
 
-const OLD_STEP = SAME_STOP_MS + 1
+const OLD_STEP = 120_001
 
 function oldId(place: number, move: { lane: number; kart: string | null }): string {
   return `L${place}-${move.lane}-${move.kart ?? 'S'}`
@@ -137,10 +114,6 @@ const TIMED_FROM = Date.UTC(2020, 0)
 // it, under an id of its own but at its place in the old log.
 export function untimed(move: PitMove): boolean {
   return move.at < TIMED_FROM
-}
-
-function sameStop(a: PitMove, b: PitMove): boolean {
-  return a.kart !== null && a.lane === b.lane && a.kart === b.kart && Math.abs(a.at - b.at) <= SAME_STOP_MS
 }
 
 // By when the moves were entered; by id between two of the same time, so every phone agrees.

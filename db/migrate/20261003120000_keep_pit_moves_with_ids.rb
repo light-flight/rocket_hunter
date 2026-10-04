@@ -1,5 +1,5 @@
 class KeepPitMovesWithIds < ActiveRecord::Migration[8.1]
-  # SAME_STOP_MS + 1 in frontend/src/pitlane.ts.
+  # OLD_STEP in frontend/src/pitlane.ts.
   OLD_STEP = 120_001
 
   # The pits of a race become two lists that only grow: every move, with an id and the time it was

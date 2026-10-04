@@ -194,17 +194,38 @@ test('teams entered on two phones apart are all kept, in the order they came in'
   assert.deepEqual(stand(union(there, here)), stand(union(here, there)))
 })
 
-test('a stop entered on both phones counts once, as the one entered first', () => {
-  const here = log(['a=0:5@10.5', 'c=0:9@11'])
-  const there = log(['b=0:5@10'])
-
-  assert.deepEqual(stand(union(here, there)), ['b=0:5', 'c=0:9'])
+test('a team that comes in again is a stop of its own, however soon and whichever phone entered it', () => {
+  assert.deepEqual(stand(union(log(['a=0:5@10']), log(['b=0:5@25']))), ['a=0:5', 'b=0:5'])
+  assert.deepEqual(stand(log(['a=0:5@10', 'b=0:5@10.1', 'c=0:5@10.2'])), ['a=0:5', 'b=0:5', 'c=0:5'])
+  assert.deepEqual(stand(union(log(['a=0:5@10.5', 'c=0:9@11']), log(['b=0:5@10']))), ['b=0:5', 'a=0:5', 'c=0:9'])
+  assert.deepEqual(stand(log(['a=0:5@10', 'b=1:5@10.5'])), ['a=0:5', 'b=1:5'])
 })
 
-test('a team that comes in again is a stop of its own, whichever phone entered it', () => {
-  assert.deepEqual(stand(union(log(['a=0:5@10']), log(['b=0:5@25']))), ['a=0:5', 'b=0:5'])
-  // Into the other corridor, it is another stop however soon.
-  assert.deepEqual(stand(log(['a=0:5@10', 'b=1:5@10.5'])), ['a=0:5', 'b=1:5'])
+test('a team that comes into the same corridor again and again changes karts every time', () => {
+  // Spares s0, s1, s2 in the corridor; team 5 comes in on q5 four times in a row, seconds apart.
+  const pits = replay(
+    standing(log(['s0=0:?@1', 's1=0:?@1', 's2=0:?@1', 'a=0:5@10', 'b=0:5@10.1', 'c=0:5@10.2', 'd=0:5@10.3'])),
+  )
+
+  // First in, first out: s0, s1, s2, then the kart it came in on the first time.
+  assert.deepEqual(
+    [...pits.took].map(([id, kart]) => [id, kart.id]),
+    [
+      ['a', 's0'],
+      ['b', 's1'],
+      ['c', 's2'],
+      ['d', 'q5'],
+    ],
+  )
+  assert.equal(kartOf(pits.riding, '5').id, 'q5')
+  assert.deepEqual(
+    pits.corridors[0].map((kart) => [kart.id, kart.leftBy]),
+    [
+      ['s0', '5'],
+      ['s1', '5'],
+      ['s2', '5'],
+    ],
+  )
 })
 
 test('spare karts put in together are all kept', () => {
@@ -241,15 +262,15 @@ test('putting logs together gives the same in any order and any number of times'
   assert.deepEqual(stand(union(one, union(two, three))), all)
   assert.deepEqual(stand(union(union(three, one), two)), all)
   assert.deepEqual(stand(union(union(union(one, two), three), two)), all)
-  // b and e are undone, and g is c entered again on another phone.
-  assert.deepEqual(all, ['f=0:?', 'a=0:1', 'd=0:5', 'c=1:9'])
+  // b and e are undone; g is team 9 into corridor 1 again, a stop of its own.
+  assert.deepEqual(all, ['f=0:?', 'a=0:1', 'd=0:5', 'c=1:9', 'g=1:9'])
 })
 
-test('undo takes back the last stop, and the same stop entered on another phone', () => {
+test('undo takes back the last stop only, even when the same team came in just before', () => {
   const pits = log(['s0=0:?@1', 'a=0:5@10', 'b=0:5@10.5', 'c=1:1@9'])
 
-  assert.deepEqual(lastMove(pits), { move: moves('a=0:5@10')[0], ids: ['a', 'b'] })
-  assert.deepEqual(lastMove(log(['s0=0:?@1', 's1=0:?@1'])), { move: moves('s1=0:?@1')[0], ids: ['s1'] })
+  assert.deepEqual(lastMove(pits), moves('b=0:5@10.5')[0])
+  assert.deepEqual(lastMove(log(['s0=0:?@1', 's1=0:?@1'])), moves('s1=0:?@1')[0])
   assert.equal(lastMove(log(['a=0:5@10'], ['a'])), null)
 })
 
@@ -263,7 +284,7 @@ test('a move entered now goes after the last that stands when the other phone’
   assert.equal(nextTime(pits, 9 * MINUTE), 9 * MINUTE)
 })
 
-test('a clock far behind the other phone’s never makes two stops of a team one', () => {
+test('a clock far behind the other phone’s keeps every stop of a team', () => {
   // Phone B, 20 minutes ahead, entered 7 into corridor 0. Phone A then enters 5 into corridor 0
   // twice, a stint apart: both stops stand.
   let pits = log(['b=0:7@40'])

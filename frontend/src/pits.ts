@@ -56,7 +56,7 @@ export async function recordMove(raceId: string, { lane, kart }: Pick<PitMove, '
   })
 }
 
-// Takes back the last move that stands, with the same stop if another phone entered it too.
+// Takes back the last move that stands.
 export async function undoMove(raceId: string): Promise<void> {
   await db.transaction('rw', db.pits, async () => {
     const log = await db.pits.get(raceId)
@@ -64,9 +64,9 @@ export async function undoMove(raceId: string): Promise<void> {
     if (!log || !last) return
     await db.pits.put({
       ...log,
-      undone: adding(log.undone, last.ids),
-      redo: [...log.redo, last.move],
-      unsent: { ...log.unsent, undone: adding(log.unsent.undone, last.ids) },
+      undone: adding(log.undone, [last.id]),
+      redo: [...log.redo, last],
+      unsent: { ...log.unsent, undone: adding(log.unsent.undone, [last.id]) },
       pending: 1,
     })
   })
@@ -109,7 +109,6 @@ export async function chooseLanes(raceId: string, lanes: number): Promise<void> 
 }
 
 // «Начать сначала»: every move is undone, on every phone, and the corridors are to be chosen again.
-// A twin of a stop entered on another phone is undone too, or it would stand in its place.
 export async function resetPits(raceId: string): Promise<void> {
   await db.transaction('rw', db.pits, async () => {
     const log = (await db.pits.get(raceId)) ?? emptyPitLog(raceId)

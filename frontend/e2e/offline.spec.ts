@@ -644,6 +644,81 @@ test('enters the pits before any protocol, by the numbers typed in', async ({ pa
   await expect(team).toBeVisible()
 })
 
+// The number is the driver's. A driver may come into the same corridor again and again, right one
+// after another: each time the number goes from the kart they came on onto the one at the front.
+test('a driver changes karts in the same corridor as often as they come in', async ({ page, context, request }) => {
+  await asInstalled(context)
+  await page.goto('/')
+  await confirmInTelegram(page, request)
+
+  await page.getByRole('button', { name: 'Новая гонка' }).click({ timeout: 10_000 })
+  await page.getByLabel('Название гонки').fill('Этап 7 · Тула')
+  await page.getByRole('button', { name: 'Создать гонку' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Этап 7 · Тула')
+  await page.getByRole('button', { name: 'Пит-стопы без квалификации' }).click()
+  await page.getByRole('button', { name: 'Готово' }).click()
+
+  const corridor = page.getByTestId('corridor')
+  const inCorridor = () =>
+    corridor
+      .getByTestId('corridor-kart')
+      .evaluateAll((karts) => karts.map((kart) => kart.getAttribute('data-kart')))
+  for (let spare = 0; spare < 2; spare++) {
+    const box = (await corridor.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.waitForTimeout(700)
+    await page.mouse.up()
+    await page.getByRole('menuitem', { name: 'Добавить неизвестную тачку' }).click()
+  }
+  await expect.poll(inCorridor).toEqual(['s0', 's1'])
+
+  // 12 comes in on the kart it qualified on and goes out on s0.
+  await page.getByRole('button', { name: 'Другой номер' }).click()
+  const other = page.getByRole('dialog', { name: 'Другой номер' })
+  await other.getByLabel('Номер').fill('12')
+  await other.getByRole('button', { name: 'Коридор 1' }).click()
+  await expect.poll(inCorridor).toEqual(['s1', 'q12'])
+
+  // Then again and again, seconds apart: first in, first out, every time.
+  const team = page.getByRole('button', { name: 'Номер 12', exact: true })
+  const dragIn = async () => {
+    const from = (await team.boundingBox())!
+    const to = (await corridor.boundingBox())!
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 })
+    await page.mouse.up()
+  }
+  for (const after of [
+    ['q12', 's0'],
+    ['s0', 's1'],
+    ['s1', 'q12'],
+    ['q12', 's0'],
+  ]) {
+    await dragIn()
+    await expect.poll(inCorridor).toEqual(after)
+  }
+
+  // Every one of the five stops is in the journal, and on the server.
+  await page.getByRole('button', { name: 'Журнал' }).click()
+  await expect(page.getByRole('dialog', { name: 'Журнал' }).getByRole('listitem')).toHaveText(
+    [...Array(5).fill(/Номер 12 → коридор 1/), /Запасной карт/, /Запасной карт/],
+  )
+  const raceId = await page.evaluate(() => localStorage.getItem('rocket-hunter.race'))
+  await expect
+    .poll(async () => {
+      const log = await (await page.request.get(`/api/races/${raceId}/pit_log`)).json()
+      return log.moves.filter((move: { kart: string | null }) => move.kart === '12').length
+    })
+    .toBe(5)
+
+  // «Отменить» takes back the last stop only: the number is back on the kart it came in on.
+  await page.getByRole('dialog', { name: 'Журнал' }).getByRole('button', { name: 'Закрыть' }).click()
+  await page.getByRole('button', { name: 'Отменить' }).click()
+  await expect.poll(inCorridor).toEqual(['s1', 'q12'])
+})
+
 test('a database that cannot be opened leaves a way out, not a blank screen', async ({ page, context }) => {
   await asInstalled(context)
   await context.addInitScript(() => {
