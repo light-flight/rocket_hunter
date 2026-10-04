@@ -41,6 +41,8 @@ export type Pitlane = {
   // The kart each team that has come in is on the track with now. Any other team is still on
   // the kart it qualified on.
   riding: Map<string, PitKart>
+  // The kart a team went out on at each of its stops, by the id of the move.
+  took: Map<string, PitKart>
 }
 
 // Two phones that entered the same team into the same corridor this close together entered the
@@ -140,6 +142,7 @@ function byTime(a: PitMove, b: PitMove): number {
 export function replay(moves: readonly PitMove[]): Pitlane {
   const corridors: PitKart[][] = Array.from({ length: CORRIDORS }, () => [])
   const riding = new Map<string, PitKart>()
+  const took = new Map<string, PitKart>()
   let spares = 0
 
   for (const move of moves) {
@@ -153,9 +156,19 @@ export function replay(moves: readonly PitMove[]): Pitlane {
     const team = move.kart
     queue.push({ ...kartOf(riding, team), leftBy: team })
     // The driver gets into the front kart. In an empty corridor that is the kart the team came on.
-    riding.set(team, queue.shift()!)
+    const out = queue.shift()!
+    riding.set(team, out)
+    took.set(move.id, out)
   }
-  return { corridors, riding }
+  return { corridors, riding, took }
+}
+
+// How many corridors the pits of a race have: the number chosen on the pit screen. None chosen yet
+// while nothing stands, and the screen asks for it. Moves standing with none chosen (another phone
+// started the pits over while this one entered) keep every corridor they use.
+export function lanesOf(chosen: number | null, moves: readonly PitMove[]): number | null {
+  if (chosen !== null) return chosen
+  return moves.length > 0 ? Math.max(...moves.map((move) => move.lane)) + 1 : null
 }
 
 // The kart a team is on the track with.
