@@ -15,7 +15,7 @@ import {
 } from './pitlane.ts'
 import { chooseLanes, paceColour, recordMove, redoMove, resetPits, syncPits, undoMove, usePitLog } from './pits.ts'
 import { syncFiles } from './qualification.ts'
-import { ActionArea, ArrowUp, History, MainAction, More, Plus, Redo, TextField, Undo } from './ui.tsx'
+import { ActionArea, ArrowUp, History, MainAction, More, Plus, Redo, SHEET, TextField, Undo } from './ui.tsx'
 
 // The pit screen. A team's number is always on the track: a team that comes in joins the end of
 // a corridor, its driver gets into the kart at the front, and the number is moved onto it. So the
@@ -48,7 +48,6 @@ const ASK_MS = 3000
 const KNOWN = 'ring-1 ring-white/8 ring-inset'
 const UNKNOWN = 'outline-2 -outline-offset-2 outline-dashed outline-fg-3'
 const OTHER = 'outline-1 -outline-offset-1 outline-dashed outline-fg-off'
-const SHEET = 'rounded-xl bg-sheet text-fg shadow-[0_0_0_1px_var(--color-line),0_18px_40px_rgb(0_0_0/0.8)]'
 
 function fill(pace: number | undefined): string | undefined {
   return pace === undefined ? undefined : paceColour(pace)

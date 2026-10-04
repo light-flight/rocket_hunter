@@ -197,37 +197,55 @@ test('keeps qualification protocols without a network and ranks the karts once t
 
   const picker = page.locator('input[type=file]')
   const pdf = (name: string) => ({ name, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF-1.4\n% ${name}\n`) })
-  const files = page.getByRole('region', { name: 'Протоколы' }).getByRole('listitem')
+  // The karts are the screen; the protocols are a key away, in a window over it.
+  const protocols = page.getByRole('dialog', { name: 'Протоколы' })
+  const files = protocols.getByRole('listitem')
+  const bar = page.getByRole('progressbar', { name: 'Протоколы' })
   const karts = page.getByTestId('kart')
 
-  // Picked without a network: kept on the phone, through a restart, until there is one.
+  // Picked without a network: kept on the phone, through a restart, until there is one. The bar
+  // waits for it.
   await context.setOffline(true)
   await picker.setInputFiles([pdf('Квала 9.pdf')])
-  await expect(files).toHaveText([/Квала 9\.pdf.*Ждёт сети/])
+  await expect(bar).toHaveAttribute('aria-valuetext', '0%, Ждёт сети · загрузится сам')
   await page.reload()
+  await expect(bar).toHaveAttribute('aria-valuetext', '0%, Ждёт сети · загрузится сам')
+  await page.getByRole('button', { name: /^1 протокол$/ }).click()
   await expect(files).toHaveText([/Квала 9\.pdf.*Ждёт сети/])
+  await protocols.getByRole('button', { name: 'Закрыть' }).click()
+  await expect(protocols).toBeHidden()
 
+  // With a network the file goes and is read, and the bar folds away. A line a kart: its place,
+  // number, best laps averaged, how many laps, and how far behind the fastest.
   await context.setOffline(false)
-  await expect(files).toHaveCount(0, { timeout: 15_000 })
-  await expect(page.getByRole('button', { name: /1 протокол · 13 картов/ })).toBeVisible()
+  await expect(bar).toHaveCount(0, { timeout: 15_000 })
+  await expect(page.getByRole('button', { name: /^1 протокол · 13 картов$/ })).toBeVisible()
+  await expect(page.getByRole('columnheader')).toHaveText(['Место', 'Карт', 'Среднее лучшее', 'Кругов', 'Отставание'])
   await expect(karts).toHaveCount(13)
-  await expect(karts.first()).toHaveText(/^1\s*1\s*40\.899\s*1 заезд/)
-  await expect(karts.nth(1)).toHaveText(/^2\s*11\s*41\.167\s*1 заезд\s*\+0\.268$/)
+  await expect(karts.first()).toHaveText(/^1\s*1\s*40\.899\s*1$/)
+  await expect(karts.nth(1)).toHaveText(/^2\s*11\s*41\.167\s*1\s*\+0\.268$/)
 
-  // The same protocol again is not read twice, and its laps count once. A file with a note
-  // keeps the list of files in sight.
+  // The same protocol again is not read twice, and its laps count once. A file with a note is
+  // told on the key to the protocols.
   await picker.setInputFiles([pdf('Квала 9.pdf')])
-  await expect(files).toHaveCount(2, { timeout: 15_000 })
-  await expect(files.nth(1)).toContainText('есть замечания', { timeout: 15_000 })
-  await expect(karts.first()).toContainText('1 заезд')
+  const noted = page.getByRole('button', { name: /^2 протокола · 13 картов · есть замечания$/ })
+  await expect(noted).toBeVisible({ timeout: 15_000 })
+  await expect(karts.first()).toHaveText(/^1\s*1\s*40\.899\s*1$/)
 
+  await noted.click()
+  await expect(files).toHaveCount(2)
+  await expect(files.nth(1)).toContainText('есть замечания')
   await files.nth(1).click()
-  const sheet = page.getByRole('dialog')
+  const sheet = page.getByRole('dialog', { name: 'Квала 9.pdf' })
   await expect(sheet).toContainText('Тот же файл, что «Квала 9.pdf»')
   await expect(sheet.getByRole('row')).toHaveCount(13)
   page.once('dialog', (dialog) => dialog.accept())
   await sheet.getByRole('button', { name: 'Убрать файл' }).click()
-  await expect(page.getByRole('button', { name: /1 протокол · 13 картов/ })).toBeVisible()
+  await expect(sheet).toBeHidden()
+  await expect(files).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  await expect(protocols).toBeHidden()
+  await expect(page.getByRole('button', { name: /^1 протокол · 13 картов$/ })).toBeVisible()
 
   // Another phone of the team sees the same files.
   const raceId = await page.evaluate(() => localStorage.getItem('rocket-hunter.race'))

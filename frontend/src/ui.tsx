@@ -122,6 +122,9 @@ export function BackLink({ children, onClick, arrow = false, label }: BackLinkPr
   )
 }
 
+// A sheet raised over the screen: a menu, or a window at the top of it.
+export const SHEET = 'rounded-xl bg-sheet text-fg shadow-[0_0_0_1px_var(--color-line),0_18px_40px_rgb(0_0_0/0.8)]'
+
 const ICON = 'shrink-0 fill-none stroke-current [stroke-linecap:round] [stroke-linejoin:round]'
 
 export function Plus() {
@@ -172,6 +175,16 @@ export function Paperclip() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-5 stroke-[2.2] ${ICON}`}>
       <path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+    </svg>
+  )
+}
+
+// A page with a corner turned down: a protocol.
+export function Protocol() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`size-5 stroke-[1.8] ${ICON}`}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5M9 13h6M9 17h4" />
     </svg>
   )
 }

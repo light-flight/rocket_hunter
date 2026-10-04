@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { dismiss, type Progress, progress } from './progress.ts'
 import {
   deleteFile,
   formatGap,
@@ -9,53 +10,262 @@ import {
   syncFiles,
 } from './qualification.ts'
 import { useOnline } from './status.ts'
-import { Attention, Check, ChevronRight, MainAction, NotSent, Spinner } from './ui.tsx'
+import { Attention, Check, ChevronRight, MainAction, NotSent, Protocol, SHEET, Spinner } from './ui.tsx'
 import { plural } from './words.ts'
 
-// The qualification of a race: the protocols the managers added and the karts they show,
-// from the fastest to the slowest.
+// The qualification of a race: its karts from the fastest to the slowest, in a table. Above them,
+// the protocols they come from, one key away, and while protocols are on their way, one bar for
+// all of them: how far they have gone to the server, and how far the model has read them.
 
-type QualificationProps = { files: QualificationFile[]; karts: Kart[]; onSignedOut: () => void }
+type QualificationProps = { raceId: string; files: QualificationFile[]; karts: Kart[]; onSignedOut: () => void }
 
-export function Qualification({ files, karts, onSignedOut }: QualificationProps) {
-  const [showFiles, setShowFiles] = useState(false)
+export function Qualification({ raceId, files, karts, onSignedOut }: QualificationProps) {
+  const [list, setList] = useState(false)
   const [opened, setOpened] = useState<string | null>(null)
-  // Files still on their way, or that need a look, stay in sight. Once all are read without
-  // a note they fold into one line above the karts.
-  const settled = files.every((file) => file.status === 'read' && file.warnings.length === 0)
   const openedFile = files.find((file) => file.id === opened)
+  const going = files.some((file) => ['local', 'waiting', 'reading'].includes(file.status))
 
   return (
     <div className="flex flex-col">
-      {settled && !showFiles ? (
-        <button
-          type="button"
-          onClick={() => setShowFiles(true)}
-          className="flex h-11 items-center gap-2 text-left text-sm text-fg-2 active:opacity-70"
-        >
-          <span className="flex-1">
-            {files.length} {plural(files.length, 'протокол', 'протокола', 'протоколов')} · {karts.length}{' '}
-            {plural(karts.length, 'карт', 'карта', 'картов')}
-          </span>
-          <ChevronRight />
-        </button>
+      <ProtocolsKey files={files} karts={karts.length} onOpen={() => setList(true)} />
+      <ProgressBar raceId={raceId} files={files} />
+
+      {karts.length > 0 ? (
+        <KartTable karts={karts} />
       ) : (
-        <section aria-label="Протоколы" className="flex flex-col">
-          <h2 className="pt-1 pb-1 text-sm text-fg-3">Протоколы</h2>
-          <ul role="list" className="flex flex-col">
-            {files.map((file) => (
-              <li key={file.id}>
-                <FileRow file={file} onOpen={() => setOpened(file.id)} />
-              </li>
-            ))}
-          </ul>
-        </section>
+        <p className="mt-8 text-center text-sm text-fg-3">
+          {going ? 'Карты встанут здесь от быстрого к медленному' : 'Картов в протоколах нет'}
+        </p>
       )}
 
-      {karts.length > 0 && <KartList karts={karts} />}
-
+      {list && <Protocols files={files} onOpen={setOpened} onClose={() => setList(false)} />}
       {openedFile && <FileSheet file={openedFile} onSignedOut={onSignedOut} onClose={() => setOpened(null)} />}
     </div>
+  )
+}
+
+type ProtocolsKeyProps = { files: QualificationFile[]; karts: number; onOpen: () => void }
+
+// How many protocols there are and what came of them, on the key that shows them. A protocol that
+// was not read, or that the model has notes on, is told here: its row is a tap away only.
+function ProtocolsKey({ files, karts, onOpen }: ProtocolsKeyProps) {
+  const failed = files.filter((file) => file.status === 'failed').length
+  const noted = files.some((file) => file.status === 'read' && file.warnings.length > 0)
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-haspopup="dialog"
+      className="flex min-h-12 items-center gap-2.5 border-b border-control py-2 text-left active:opacity-70"
+    >
+      <span className="flex text-fg-3">
+        <Protocol />
+      </span>
+      <span className="min-w-0 flex-1 text-body">
+        {files.length} {plural(files.length, 'протокол', 'протокола', 'протоколов')}
+        {karts > 0 && ` · ${karts} ${plural(karts, 'карт', 'карта', 'картов')}`}
+        {failed > 0 ? (
+          <span className="text-fg-2"> · {failed} {plural(failed, 'не прочитан', 'не прочитаны', 'не прочитаны')}</span>
+        ) : (
+          noted && <span className="text-fg-2"> · есть замечания</span>
+        )}
+      </span>
+      {(failed > 0 || noted) && (
+        <span className="flex text-fg-2">
+          <Attention />
+        </span>
+      )}
+      <ChevronRight />
+    </button>
+  )
+}
+
+// How often the bar moves on while it is up, and how long it stays full once everything is read:
+// as long as it takes to fold away (--animate-bar-out).
+const TICK_MS = 250
+const DONE_MS = 1500
+
+// One bar for every protocol on its way: the first quarter is the way to the server, the rest the
+// model reading. Light runs along the part going now; without a network nothing moves.
+function ProgressBar({ raceId, files }: { raceId: string; files: QualificationFile[] }) {
+  const online = useOnline()
+  const [shown, setShown] = useState<Progress | null>(() => progress(raceId, files))
+  const up = shown !== null
+  const done = shown?.done ?? false
+
+  useEffect(() => {
+    const update = () => setShown(progress(raceId, files))
+    update()
+    if (!up) return
+    const timer = window.setInterval(update, TICK_MS)
+    return () => window.clearInterval(timer)
+  }, [raceId, files, up])
+
+  useEffect(() => {
+    if (!done) return
+    const timer = window.setTimeout(() => {
+      dismiss(raceId)
+      setShown(null)
+    }, DONE_MS)
+    return () => window.clearTimeout(timer)
+  }, [raceId, done])
+
+  if (!shown) return null
+
+  const sending = shown.local > 0 && online
+  const reading = shown.reading > 0
+  const percent = shown.done ? 100 : Math.min(99, Math.floor(shown.whole * 100))
+  const of = (count: number) => (shown.files > 1 ? ` ${count} из ${shown.files}` : '')
+  const text = shown.done
+    ? 'Готово'
+    : shown.local === 0
+      ? `Распознаётся${shown.files > 1 ? ` · готово${of(shown.files - shown.reading)}` : ''}`
+      : online
+        ? `Загружается${of(shown.files - shown.local + 1)}`
+        : 'Ждёт сети · загрузится сам'
+
+  return (
+    // Opens and folds away by its height, so the karts below move along rather than jump.
+    <div className={`grid grid-rows-[1fr] ${done ? 'animate-bar-out' : 'animate-bar-in'} motion-reduce:animate-none`}>
+      <div className="min-h-0 overflow-hidden">
+        <div className="flex flex-col gap-2 pt-3 pb-1">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="flex items-center gap-1.5 self-center text-sm text-fg-2">
+              {shown.done && <Check />}
+              {text}
+            </span>
+            <span className="text-name font-semibold tabular-nums">{percent}%</span>
+          </div>
+          <div
+            role="progressbar"
+            aria-label="Протоколы"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent}
+            aria-valuetext={`${percent}%, ${text}`}
+            className="grid grid-cols-[1fr_3fr] gap-1"
+          >
+            <Leg part={shown.sent} going={sending} />
+            <Leg part={shown.read} going={reading} />
+          </div>
+          <div aria-hidden="true" className="grid grid-cols-[1fr_3fr] gap-1 text-xs">
+            <LegName done={shown.sent === 1} going={sending}>
+              Загрузка
+            </LegName>
+            <LegName done={shown.read === 1} going={reading}>
+              Распознавание
+            </LegName>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Leg({ part, going }: { part: number; going: boolean }) {
+  return (
+    <div className="relative h-2 overflow-hidden rounded-full bg-line">
+      <div
+        className="h-full rounded-full bg-fg-2 transition-[width] duration-300 ease-linear motion-reduce:transition-none"
+        style={{ width: `${part * 100}%` }}
+      />
+      {going && (
+        <div className="absolute inset-y-0 left-0 w-2/5 animate-sheen bg-linear-to-r from-transparent via-white/45 to-transparent motion-reduce:hidden" />
+      )}
+    </div>
+  )
+}
+
+function LegName({ done, going, children }: { done: boolean; going: boolean; children: string }) {
+  return (
+    <span className={`flex items-center gap-1 ${going ? 'text-fg-2' : 'text-fg-3'}`}>
+      {done && <Check />}
+      {children}
+    </span>
+  )
+}
+
+// One line a kart: its place, its number, its best laps averaged, how many there were, and how far
+// it is behind the fastest.
+function KartTable({ karts }: { karts: Kart[] }) {
+  const fastest = karts[0].average
+
+  return (
+    <table aria-label="Карты по скорости" className="mt-2 w-full text-left tabular-nums">
+      <thead className="text-xs text-fg-3">
+        <tr className="h-8">
+          <th scope="col" className="w-7 font-normal">
+            <span className="sr-only">Место</span>
+          </th>
+          <th scope="col" className="w-15 font-normal">
+            Карт
+          </th>
+          <th scope="col" className="font-normal">
+            Среднее лучшее
+          </th>
+          <th scope="col" className="w-14 text-right font-normal">
+            Кругов
+          </th>
+          <th scope="col" className="w-21 text-right font-normal">
+            Отставание
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {karts.map((kart, index) => (
+          <tr key={kart.kart} data-testid="kart" className="h-10 border-t border-control">
+            <td className="text-sm text-fg-3">{index + 1}</td>
+            <th scope="row" className="text-[1.375rem]/7 font-bold">
+              {kart.kart}
+            </th>
+            <td className="text-name font-semibold">{formatLap(kart.average)}</td>
+            <td className="text-right text-body text-fg-2">{kart.laps}</td>
+            <td className="text-right text-body text-fg-3">{index > 0 && formatGap(kart.average - fastest)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+type ProtocolsProps = { files: QualificationFile[]; onOpen: (id: string) => void; onClose: () => void }
+
+// Every protocol of the race, oldest first, and where each is on its way to being read. A tap on
+// one shows what the model read in it, over this window.
+function Protocols({ files, onOpen, onClose }: ProtocolsProps) {
+  const sheet = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    sheet.current?.showModal()
+  }, [])
+
+  return (
+    <dialog
+      ref={sheet}
+      onClose={onClose}
+      // A tap on the dimmed screen around it closes it.
+      onClick={(event) => event.target === sheet.current && sheet.current.close()}
+      aria-label="Протоколы"
+      className={`mx-auto mt-[calc(env(safe-area-inset-top)+1rem)] max-h-[calc(100dvh-env(safe-area-inset-top)-2rem)] w-[calc(100%-2rem)] max-w-sm flex-col ${SHEET} backdrop:bg-black/60 open:flex`}
+    >
+      <p className="shrink-0 px-4 pt-3 pb-1 text-xs tracking-[0.06em] text-fg-3 uppercase">Протоколы</p>
+      {/* Many protocols scroll inside, under the title and above the key that closes it. */}
+      <ul role="list" className="min-h-0 overflow-y-auto overscroll-contain px-4">
+        {files.map((file) => (
+          <li key={file.id}>
+            <FileRow file={file} onOpen={() => onOpen(file.id)} />
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => sheet.current?.close()}
+        className="h-12 shrink-0 text-body text-fg-2 active:opacity-70"
+      >
+        Закрыть
+      </button>
+    </dialog>
   )
 }
 
@@ -85,7 +295,7 @@ function FileStatus({ file }: { file: QualificationFile }) {
   let bright = true
   if (file.status === 'local') {
     icon = <NotSent />
-    text = online ? 'Отправляется…' : 'Ждёт сети · отправится сам'
+    text = online ? 'Загружается…' : 'Ждёт сети · загрузится сам'
     bright = false
   } else if (file.status === 'waiting' || file.status === 'reading') {
     icon = <Spinner />
@@ -102,40 +312,6 @@ function FileStatus({ file }: { file: QualificationFile }) {
       {icon}
       <span className="min-w-0">{text}</span>
     </span>
-  )
-}
-
-function KartList({ karts }: { karts: Kart[] }) {
-  const fastest = karts[0].average
-
-  return (
-    <section aria-label="Карты по скорости" className="mt-3 flex flex-col">
-      <div aria-hidden="true" className="flex h-6 items-center text-xs text-fg-3">
-        <span className="w-7 shrink-0" />
-        <span className="w-16 shrink-0">Карт</span>
-        <span className="flex-1">Среднее лучшее</span>
-        <span>Отставание</span>
-      </div>
-      <ol role="list" className="flex flex-col">
-        {karts.map((kart, index) => (
-          <li
-            key={kart.kart}
-            data-testid="kart"
-            className="flex h-14 items-center border-t border-control tabular-nums"
-          >
-            <span className="w-7 shrink-0 text-sm text-fg-3">{index + 1}</span>
-            <span className="w-16 shrink-0 text-[1.875rem]/[2.125rem] font-bold">{kart.kart}</span>
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="text-name font-semibold">{formatLap(kart.average)}</span>
-              <span className="text-sm text-fg-3">
-                {kart.laps} {plural(kart.laps, 'заезд', 'заезда', 'заездов')}
-              </span>
-            </span>
-            <span className="text-body text-fg-3">{index > 0 && formatGap(kart.average - fastest)}</span>
-          </li>
-        ))}
-      </ol>
-    </section>
   )
 }
 
