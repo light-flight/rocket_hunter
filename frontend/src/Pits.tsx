@@ -13,7 +13,8 @@ import {
   teams,
   untimed,
 } from './pitlane.ts'
-import { chooseLanes, paceColour, recordMove, redoMove, resetPits, syncPits, undoMove, usePitLog } from './pits.ts'
+import { BARE_EDGE, KNOWN_EDGE, paceColour, paceIsLight, usePalette, type Palette } from './palette.ts'
+import { chooseLanes, recordMove, redoMove, resetPits, syncPits, undoMove, usePitLog } from './pits.ts'
 import { syncFiles } from './qualification.ts'
 import { Sheet, type SheetHandle } from './Sheet.tsx'
 import { ActionArea, ArrowRight, ArrowUp, History, MainAction, More, Plus, Redo, SHEET, TextField, Undo } from './ui.tsx'
@@ -21,11 +22,12 @@ import { ActionArea, ArrowRight, ArrowUp, History, MainAction, More, Plus, Redo,
 // The pit screen. A team's number is always on the track: a team that comes in joins the end of
 // a corridor, its driver gets into the kart at the front, and the number is moved onto it. So the
 // corridors at the top hold karts with no number on them, and below are all the teams, each on the
-// kart it took last; a team that comes in is dragged into its corridor. Colour tells a kart's pace:
-// purple the fastest, grey the middle, brown the slowest. A kart nobody knows the pace of has no
-// colour, only a bold dashed edge. The first time the pits are opened they ask how many corridors
-// the pit lane has, and the corridors stay so until the pits are started over from the ⋯ menu. The
-// journal tells which team came into which corridor, and when.
+// kart it took last; a team that comes in is dragged into its corridor. Colour tells a kart's pace,
+// mixed from the three colours chosen in the manager's menu: by default purple the fastest, grey
+// the middle, brown the slowest. A kart nobody knows the pace of has no colour, only a bold
+// dashed edge. The first time the pits are opened they ask how many
+// corridors the pit lane has, and the corridors stay so until the pits are started over from the
+// ⋯ menu. The journal tells which team came into which corridor, and when.
 
 type PitsProps = { race: Race; karts: Kart[]; onQualification: () => void; onSignedOut: () => void }
 
@@ -42,16 +44,21 @@ const POLL_MS = 10_000
 // them up already.
 const ASK_MS = 3000
 
-// A kart of a known pace has its colour and a thin light edge: dark ones would melt into the
-// ground otherwise. One nobody knows the pace of has no colour at all, only a bold dashed edge,
-// light enough to see on the black of a corridor. The key for another number is dashed too, but
-// thinner and darker: it is not a kart.
-const KNOWN = 'ring-1 ring-tile-edge ring-inset'
-const UNKNOWN = 'outline-2 -outline-offset-2 outline-dashed outline-fg-3'
+// A kart with a colour has a thin light edge: dark ones would melt into the ground otherwise.
+// One nobody knows the pace of has no colour at all, only a bold dashed edge, light enough to
+// see on the black of a corridor. The key for another number is dashed too, but thinner and
+// darker: it is not a kart.
+const KNOWN = KNOWN_EDGE
+const UNKNOWN = BARE_EDGE
 const OTHER = 'outline-1 -outline-offset-1 outline-dashed outline-fg-off'
 
-function fill(pace: number | undefined): string | undefined {
-  return pace === undefined ? undefined : paceColour(pace)
+function fill(pace: number | undefined, palette: Palette): string | undefined {
+  return pace === undefined ? undefined : paceColour(pace, palette)
+}
+
+// Light numbers on a light tile disappear, so a bright pace takes dark ones.
+function ink(pace: number | undefined, palette: Palette): string {
+  return pace !== undefined && paceIsLight(pace, palette) ? 'text-on-pace-dark' : 'text-on-pace'
 }
 
 // A kart's pace in words, for those who listen to the screen rather than look at it.
@@ -132,6 +139,7 @@ type PitLaneProps = {
 
 // The pits once their corridors are chosen.
 function PitLane({ raceId, log, moves, corridors, karts, onQualification, change }: PitLaneProps) {
+  const palette = usePalette()
   const [drag, setDrag] = useState<Drag | null>(null)
   const [menu, setMenu] = useState<Menu | null>(null)
   const [more, setMore] = useState(false)
@@ -324,6 +332,7 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
                 they get lower to fit, and stay as wide. */}
             {queue.map((kart, place) => {
               const known = paceOf(kart, pace)
+              const colour = fill(known, palette)
               return (
                 <div
                   key={kart.id}
@@ -333,9 +342,9 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
                   data-kart={kart.id}
                   data-pace={known ?? 'unknown'}
                   className={`aspect-square min-h-8 w-full max-w-30 shrink self-center rounded-lg ${
-                    known === undefined ? UNKNOWN : KNOWN
+                    colour === undefined ? UNKNOWN : KNOWN
                   }`}
-                  style={{ background: fill(known) }}
+                  style={{ background: colour }}
                 />
               )
             })}
@@ -363,6 +372,7 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
       <div className="mt-4 grid gap-2.5" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
         {all.map((team) => {
           const known = riding(team)
+          const colour = fill(known, palette)
           return (
             <button
               key={team}
@@ -375,9 +385,9 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
               onPointerUp={endDrag}
               onPointerCancel={() => setDrag(null)}
               className={`flex touch-none items-center justify-center rounded-lg font-extrabold tabular-nums ${tile} ${
-                known === undefined ? UNKNOWN : `${KNOWN} text-on-pace`
+                colour === undefined ? UNKNOWN : `${KNOWN} ${ink(known, palette)}`
               } ${drag?.team === team ? 'opacity-25' : ''}`}
-              style={{ background: fill(known) }}
+              style={{ background: colour }}
             >
               {team}
             </button>
@@ -409,16 +419,16 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
       {drag && (
         <div
           aria-hidden="true"
-          // A kart of no known pace has no colour, but the ground under it, not the tiles it passes.
+          // A kart with no colour has the ground under it, not the tiles it passes.
           className={`pointer-events-none fixed z-50 flex scale-115 items-center justify-center rounded-lg font-extrabold tabular-nums shadow-[var(--shadow-lift)] ${tile} ${
-            riding(drag.team) === undefined ? `${UNKNOWN} bg-ground` : 'text-on-pace'
+            fill(riding(drag.team), palette) === undefined ? `${UNKNOWN} bg-ground` : ink(riding(drag.team), palette)
           }`}
           style={{
             left: drag.x - drag.width / 2,
             top: drag.y - drag.height / 2,
             width: drag.width,
             height: drag.height,
-            background: fill(riding(drag.team)),
+            background: fill(riding(drag.team), palette),
           }}
         >
           {drag.team}
@@ -459,7 +469,14 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
       )}
 
       {journal && (
-        <Journal moves={moves} came={pitlane.came} took={pitlane.took} pace={pace} onClose={() => setJournal(false)} />
+        <Journal
+          moves={moves}
+          came={pitlane.came}
+          took={pitlane.took}
+          pace={pace}
+          palette={palette}
+          onClose={() => setJournal(false)}
+        />
       )}
     </div>
   )
@@ -571,13 +588,14 @@ type JournalProps = {
   came: ReadonlyMap<string, PitKart>
   took: ReadonlyMap<string, PitKart>
   pace: ReadonlyMap<string, number>
+  palette: Palette
   onClose: () => void
 }
 
 // Every move that stands, the last first: which team came into which corridor, when it was entered
 // to the second, and the karts it changed: the one it came in on, an arrow, the one it went out on.
 // A move kept from before moves had times has none, and neither has one entered again from it.
-function Journal({ moves, came, took, pace, onClose }: JournalProps) {
+function Journal({ moves, came, took, pace, palette, onClose }: JournalProps) {
   return (
     <Sheet label="Журнал" onClose={onClose}>
       {moves.length === 0 ? (
@@ -601,9 +619,9 @@ function Journal({ moves, came, took, pace, onClose }: JournalProps) {
                     aria-label={`Смена: ${paceWord(paceOf(from, pace))} → ${paceWord(paceOf(to, pace))}`}
                     className="flex shrink-0 items-center gap-1.5 text-fg-3"
                   >
-                    <JournalKart pace={paceOf(from, pace)} />
+                    <JournalKart pace={paceOf(from, pace)} palette={palette} />
                     <ArrowRight />
-                    <JournalKart pace={paceOf(to, pace)} />
+                    <JournalKart pace={paceOf(to, pace)} palette={palette} />
                   </span>
                 )}
               </li>
@@ -615,9 +633,13 @@ function Journal({ moves, came, took, pace, onClose }: JournalProps) {
   )
 }
 
-// A kart in the journal: a small tile of its pace, or dashed when nobody knows it.
-function JournalKart({ pace }: { pace: number | undefined }) {
+// A kart in the journal: a small tile of its pace, or dashed when it has no colour.
+function JournalKart({ pace, palette }: { pace: number | undefined; palette: Palette }) {
+  const colour = fill(pace, palette)
   return (
-    <span className={`size-6 shrink-0 rounded-md ${pace === undefined ? UNKNOWN : KNOWN}`} style={{ background: fill(pace) }} />
+    <span
+      className={`size-6 shrink-0 rounded-md ${colour === undefined ? UNKNOWN : KNOWN}`}
+      style={{ background: colour }}
+    />
   )
 }

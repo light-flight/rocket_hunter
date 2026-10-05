@@ -45,8 +45,10 @@
   --color-dim: rgb(0 0 0 / 0.45);
   /* The thin edge of a tile of a known pace: dark tiles would melt into the ground otherwise. */
   --color-tile-edge: rgb(255 255 255 / 0.08);
-  /* A number on a tile of a known pace: the pace colours are the same in both looks, so is this. */
+  /* A number on a tile of a known pace. Light tiles take the dark ink: a yellow would swallow
+     the light one. The pace colours are the same in both looks, and so are these. */
   --color-on-pace: #f5f5f7;
+  --color-on-pace-dark: #141416;
   /* What stands behind the status bar of an iPhone app: it draws its text white over the app. */
   --color-status-bar: transparent;
 
