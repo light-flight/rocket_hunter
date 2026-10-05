@@ -133,7 +133,7 @@ test('signs in, keeps races without a network and sends them later', async ({ pa
   await expect(raceName).toHaveText('Этап 2')
   await page.getByRole('button', { name: 'Все гонки' }).click()
   const rows = page.getByRole('listitem')
-  await expect(rows).toHaveText([/^Этап 2.*открыта сейчас.*ждёт сети/, /^Этап 1 · Крылатское/])
+  await expect(rows).toHaveText([/^Этап 2.*текущая.*ждёт сети/, /^Этап 1 · Крылатское/])
 
   await context.setOffline(false)
   await expect(rows.first()).not.toContainText('ждёт сети')
@@ -247,9 +247,9 @@ test('keeps qualification protocols without a network and ranks the karts once t
   // waits for it.
   await context.setOffline(true)
   await picker.setInputFiles([pdf('Квала 9.pdf')])
-  await expect(bar).toHaveAttribute('aria-valuetext', '0%, Ждёт сети · загрузится сам')
+  await expect(bar).toHaveAttribute('aria-valuetext', '0%, Ждёт сети · загрузится, когда появится')
   await page.reload()
-  await expect(bar).toHaveAttribute('aria-valuetext', '0%, Ждёт сети · загрузится сам')
+  await expect(bar).toHaveAttribute('aria-valuetext', '0%, Ждёт сети · загрузится, когда появится')
   await page.getByRole('button', { name: /^1 протокол$/ }).click()
   await expect(files).toHaveText([/Квала 9\.pdf.*Ждёт сети/])
   // A sheet has no key to close it on the screen: it goes when pulled down by its bar.
@@ -352,7 +352,7 @@ test('keeps qualification protocols without a network and ranks the karts once t
   const grid = page.getByTestId('pit-kart')
   const team = (number: string) => page.getByRole('button', { name: `Номер ${number}`, exact: true })
   const undo = page.getByRole('button', { name: 'Отменить' })
-  const redo = page.getByRole('button', { name: 'Вернуть' })
+  const redo = page.getByRole('button', { name: 'Повторить' })
   const more = page.getByRole('button', { name: 'Ещё' })
   const done = page.getByRole('button', { name: 'Готово' })
   await expect(lanes.getByRole('radio', { name: '1 коридор' })).toBeChecked()
@@ -389,7 +389,7 @@ test('keeps qualification protocols without a network and ranks the karts once t
     await page.mouse.down()
     await page.waitForTimeout(700)
     await page.mouse.up()
-    await page.getByRole('menuitem', { name: 'Добавить неизвестную тачку' }).click()
+    await page.getByRole('menuitem', { name: 'Добавить запасной карт' }).click()
   }
   for (const lane of [0, 0, 1, 1]) await longPress(lane)
   await expect.poll(() => inCorridor(0)).toEqual(['s0', 's1'])
@@ -515,9 +515,9 @@ test('keeps qualification protocols without a network and ranks the karts once t
   // and went out on the kart of 1, the fastest; 7, typed in, on karts nobody knows the pace of. A
   // spare put in by hand changed nobody's kart.
   const changed = (row: number) => journal.getByRole('listitem').nth(row).getByRole('img')
-  await expect(changed(2)).toHaveAttribute('aria-label', /^Пересел: .+ → быстрый$/)
-  await expect(changed(4)).toHaveAttribute('aria-label', 'Пересел: быстрый → скорость неизвестна')
-  await expect(changed(0)).toHaveAttribute('aria-label', 'Пересел: скорость неизвестна → скорость неизвестна')
+  await expect(changed(2)).toHaveAttribute('aria-label', /^Смена: .+ → быстрый$/)
+  await expect(changed(4)).toHaveAttribute('aria-label', 'Смена: быстрый → скорость неизвестна')
+  await expect(changed(0)).toHaveAttribute('aria-label', 'Смена: скорость неизвестна → скорость неизвестна')
   await expect(changed(5)).toHaveCount(0)
   // The time 7 was typed in, by the clock of the phone that entered it.
   const seven = (await pitsOnServer()).moves.find((move) => move.kart === '7')!.at
@@ -614,7 +614,7 @@ test('keeps qualification protocols without a network and ranks the karts once t
   // Starting the pits over is asked first: a «no» leaves them as they are, and the focus where it was.
   await more.click()
   page.once('dialog', (dialog) => dialog.dismiss())
-  await page.getByRole('menuitem', { name: 'Начать сначала' }).click()
+  await page.getByRole('menuitem', { name: 'Сбросить пит-стопы' }).click()
   await expect(page.getByRole('menu')).toHaveCount(0)
   await expect(more).toBeFocused()
   await expect.poll(() => inCorridor(0)).toEqual(['q3', 'q17'])
@@ -626,9 +626,9 @@ test('keeps qualification protocols without a network and ranks the karts once t
     asked = dialog.message()
     void dialog.accept()
   })
-  await page.getByRole('menuitem', { name: 'Начать сначала' }).click()
+  await page.getByRole('menuitem', { name: 'Сбросить пит-стопы' }).click()
   await expect(lanes).toBeVisible()
-  expect(asked).toBe('Начать пит-стопы сначала? Смены сотрутся на всех телефонах, коридоры выберете заново.')
+  expect(asked).toBe('Сбросить пит-стопы? Смены удалятся на всех телефонах, коридоры нужно выбрать заново.')
   await expect(corridors).toHaveCount(0)
   await expect(grid).toHaveCount(0)
   await expect
@@ -717,7 +717,7 @@ test('enters the pits before any protocol, by the numbers typed in', async ({ pa
 
   const pitsTab = page.getByRole('tab', { name: 'Пит-стопы' })
   const team = page.getByRole('button', { name: 'Номер 12A', exact: true })
-  await page.getByRole('button', { name: 'Пит-стопы без квалификации' }).click()
+  await page.getByRole('button', { name: 'Открыть пит-стопы' }).click()
   await expect(pitsTab).toHaveAttribute('aria-selected', 'true')
 
   // The first time, the pits ask how many corridors the pit lane has: one unless told otherwise.
@@ -768,7 +768,7 @@ test('a driver changes karts in the same corridor as often as they come in', asy
   await page.getByLabel('Название гонки').fill('Этап 7 · Тула')
   await page.getByRole('button', { name: 'Создать гонку' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Этап 7 · Тула')
-  await page.getByRole('button', { name: 'Пит-стопы без квалификации' }).click()
+  await page.getByRole('button', { name: 'Открыть пит-стопы' }).click()
   await page.getByRole('button', { name: 'Готово' }).click()
 
   const corridor = page.getByTestId('corridor')
@@ -782,7 +782,7 @@ test('a driver changes karts in the same corridor as often as they come in', asy
     await page.mouse.down()
     await page.waitForTimeout(700)
     await page.mouse.up()
-    await page.getByRole('menuitem', { name: 'Добавить неизвестную тачку' }).click()
+    await page.getByRole('menuitem', { name: 'Добавить запасной карт' }).click()
   }
   await expect.poll(inCorridor).toEqual(['s0', 's1'])
 

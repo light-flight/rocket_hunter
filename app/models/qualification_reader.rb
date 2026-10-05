@@ -80,7 +80,7 @@ class QualificationReader
     Rails.logger.info "Qualification read by #{message.model}: #{message.usage.to_h.slice(:input_tokens, :output_tokens).to_json}"
 
     case message.stop_reason
-    when :refusal then raise Unreadable, "Модель отказалась читать этот файл"
+    when :refusal then raise Unreadable, "Файл прочитать не удалось"
     when :max_tokens then raise Unreadable, "Протокол слишком длинный для одного файла"
     end
 
@@ -88,7 +88,7 @@ class QualificationReader
     { rows: Array(answer["rows"]), warnings: Array(answer["warnings"]).first(WARNINGS).map { it.to_s.truncate(WARNING_LENGTH) },
       model: message.model.to_s }
   rescue JSON::ParserError
-    raise Unreadable, "Модель ответила не по форме, попробуйте прочитать снова"
+    raise Unreadable, "Не удалось разобрать протокол, прочитайте снова"
   rescue Anthropic::Errors::AuthenticationError, Anthropic::Errors::PermissionDeniedError => error
     Rails.logger.warn "Qualification read refused: #{error.message}"
     raise Unreadable, "Нет доступа к модели: проверьте ключ API"
@@ -96,7 +96,7 @@ class QualificationReader
     Rails.logger.warn "Qualification read rejected: #{error.message}"
     # The account or the settings, not this file.
     raise Unreadable, "Модель недоступна: проверьте баланс и настройки API" if error.message.match?(/credit|billing|model|beta|effort/i)
-    raise Unreadable, "Модель не смогла открыть файл"
+    raise Unreadable, "Не удалось открыть файл"
   end
 
   private

@@ -95,7 +95,7 @@ export function Races({ user, auth }: RacesProps) {
   if (screen === 'edit' && editing) {
     return (
       <RaceForm
-        title="Изменить гонку"
+        title="Изменить название"
         action="Сохранить"
         initial={editing}
         onSubmit={edit}
@@ -316,7 +316,7 @@ function RaceList({ races, selectedId, onOpen, onNew, onEdit, user, auth }: Race
                 <span className="flex flex-wrap gap-x-3 text-sm text-fg-3">
                   <span className={race.id === selectedId ? 'text-fg-2' : ''}>
                     {made(race)}
-                    {race.id === selectedId && ' · открыта сейчас'}
+                    {race.id === selectedId && ' · текущая'}
                   </span>
                   {race.pending === 1 && (
                     <span className="flex items-center gap-1">
@@ -499,7 +499,7 @@ function RaceScreen({ race, onBack, onFilesAdded, onSignedOut }: RaceScreenProps
         <>
           <div className="mt-[14dvh] flex flex-col gap-1.5 px-2 text-center text-balance">
             <p className="text-name text-fg-2">Добавьте протоколы квалификации</p>
-            <p className="text-sm text-fg-3">Карты встанут от быстрого к медленному</p>
+            <p className="text-sm text-fg-3">Карты выстроятся от быстрых к медленным</p>
           </div>
           {/* A race already on, or protocols not out yet: the pits do not wait for them. */}
           <button
@@ -507,7 +507,7 @@ function RaceScreen({ race, onBack, onFilesAdded, onSignedOut }: RaceScreenProps
             onClick={() => setTab('pits')}
             className="mt-3 flex h-11 items-center self-center px-1 text-sm text-fg-3 underline underline-offset-3 active:opacity-70"
           >
-            Пит-стопы без квалификации
+            Открыть пит-стопы
           </button>
           <ActionArea>
             <p className="text-center text-sm text-fg-3">PDF или фото, можно несколько</p>

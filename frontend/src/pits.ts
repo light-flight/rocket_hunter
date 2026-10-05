@@ -108,7 +108,7 @@ export async function chooseLanes(raceId: string, lanes: number): Promise<void> 
   })
 }
 
-// «Начать сначала»: every move is undone, on every phone, and the corridors are to be chosen again.
+// «Сбросить пит-стопы»: every move is undone, on every phone, and the corridors are to be chosen again.
 export async function resetPits(raceId: string): Promise<void> {
   await db.transaction('rw', db.pits, async () => {
     const log = (await db.pits.get(raceId)) ?? emptyPitLog(raceId)

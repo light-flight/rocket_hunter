@@ -61,7 +61,7 @@ export type PitLog = {
   raceId: string
   moves: PitMove[]
   undone: string[]
-  // The moves undone on this phone, the last undone last: «Вернуть» enters the last one again.
+  // The moves undone on this phone, the last undone last: «Повторить» enters the last one again.
   redo: PitMove[]
   // The corridors of the pit lane, 1 to 3, chosen on the pit screen; null until they are. lanesAt is
   // when they were chosen, by the clock of the phone that chose them: of two choices the later wins.

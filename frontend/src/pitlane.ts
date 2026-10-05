@@ -106,7 +106,7 @@ export function isOld(move: PitMove): boolean {
 // Real times of entry are decades after the places old logs give for one.
 const TIMED_FROM = Date.UTC(2020, 0)
 
-// A move with no real time of entry: one kept from an old log, or one «Вернуть» entered again from
+// A move with no real time of entry: one kept from an old log, or one «Повторить» entered again from
 // it, under an id of its own but at its place in the old log.
 export function untimed(move: PitMove): boolean {
   return move.at < TIMED_FROM

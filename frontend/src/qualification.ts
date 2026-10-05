@@ -216,7 +216,7 @@ async function exchange(onSignedOut: () => void): Promise<void> {
 
     const bytes = await prepared(file.id)
     if (!bytes || bytes.data.byteLength > SIZE_LIMIT) {
-      await refuse(file.id, bytes ? 'Файл больше 20 МБ' : 'Файл потерялся на телефоне')
+      await refuse(file.id, bytes ? 'Файл больше 20 МБ' : 'Файл не найден на телефоне')
       continue
     }
 

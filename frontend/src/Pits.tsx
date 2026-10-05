@@ -252,7 +252,7 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
   // Asked first: it takes every stop away, on every phone.
   async function startOver() {
     setMore(false)
-    const asked = 'Начать пит-стопы сначала? Смены сотрутся на всех телефонах, коридоры выберете заново.'
+    const asked = 'Сбросить пит-стопы? Смены удалятся на всех телефонах, коридоры нужно выбрать заново.'
     if (!window.confirm(asked)) return
     await change(() => resetPits(raceId))
   }
@@ -286,7 +286,7 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
                 onClick={startOver}
                 className="flex h-14 w-full items-center px-4 text-left text-name active:opacity-70"
               >
-                Начать сначала
+                Сбросить пит-стопы
               </button>
             </div>
           </>
@@ -340,7 +340,7 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
               )
             })}
             {queue.length === 0 && (
-              <p className="m-auto px-1 text-center text-sm text-fg-3">Удерживайте, чтобы добавить тачку</p>
+              <p className="m-auto px-1 text-center text-sm text-fg-3">Удерживайте, чтобы добавить запасной карт</p>
             )}
           </div>
         ))}
@@ -352,7 +352,7 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
           Отменить
         </PitKey>
         <PitKey onClick={() => change(() => redoMove(raceId))} disabled={log.redo.length === 0}>
-          Вернуть
+          Повторить
           <Redo />
         </PitKey>
         <PitKey label="Журнал" onClick={() => setJournal(true)}>
@@ -444,7 +444,7 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
               className="flex h-14 w-full items-center gap-3 px-4 text-left text-name active:opacity-70"
             >
               <span aria-hidden="true" className={`size-7 shrink-0 rounded-md ${UNKNOWN}`} />
-              Добавить неизвестную тачку
+              Добавить запасной карт
             </button>
           </div>
         </>
@@ -477,7 +477,7 @@ function Setup({ onChoose }: { onChoose: (lanes: number) => void }) {
         <h2 id={question} className="text-name font-semibold">
           Сколько коридоров в пите?
         </h2>
-        <p className="text-sm text-fg-3">Поменять потом можно, только начав пит-стопы сначала</p>
+        <p className="text-sm text-fg-3">Изменить потом можно только через «Сбросить пит-стопы».</p>
       </div>
       <LanesPicker value={lanes} onChange={setLanes} labelledBy={question} />
       <ActionArea>
@@ -598,7 +598,7 @@ function Journal({ moves, came, took, pace, onClose }: JournalProps) {
                 {from && to && (
                   <span
                     role="img"
-                    aria-label={`Пересел: ${paceWord(paceOf(from, pace))} → ${paceWord(paceOf(to, pace))}`}
+                    aria-label={`Смена: ${paceWord(paceOf(from, pace))} → ${paceWord(paceOf(to, pace))}`}
                     className="flex shrink-0 items-center gap-1.5 text-fg-3"
                   >
                     <JournalKart pace={paceOf(from, pace)} />

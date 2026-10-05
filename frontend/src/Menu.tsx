@@ -29,7 +29,7 @@ export function Menu({ user, auth, onClose }: MenuProps) {
           </p>
           <p className="text-sm text-fg-3">
             Работа без сети: <span data-testid="offline-ready">{cached ? 'готово' : 'не готово'}</span>
-            {` · сборка ${__BUILD_ID__}`}
+            {` · версия ${__BUILD_ID__}`}
           </p>
         </div>
         <ThemePicker />

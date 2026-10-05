@@ -35,7 +35,7 @@ export function Qualification({ raceId, files, karts, onSignedOut }: Qualificati
         <KartTable karts={karts} />
       ) : (
         <p className="mt-8 text-center text-sm text-fg-3">
-          {going ? 'Карты встанут здесь от быстрого к медленному' : 'Картов в протоколах нет'}
+          {going ? 'Карты выстроятся здесь от быстрых к медленным' : 'Картов в протоколах нет'}
         </p>
       )}
 
@@ -117,7 +117,7 @@ function ProgressBar({ raceId, files }: { raceId: string; files: QualificationFi
       ? `Распознаётся${shown.files > 1 ? ` · готово${of(shown.files - shown.reading)}` : ''}`
       : online
         ? `Загружается${of(shown.files - shown.local + 1)}`
-        : 'Ждёт сети · загрузится сам'
+        : 'Ждёт сети · загрузится, когда появится'
 
   return (
     // Opens and folds away by its height, so the karts below move along rather than jump.
@@ -267,7 +267,7 @@ function FileStatus({ file }: { file: QualificationFile }) {
   let bright = true
   if (file.status === 'local') {
     icon = <NotSent />
-    text = online ? 'Загружается…' : 'Ждёт сети · загрузится сам'
+    text = online ? 'Загружается…' : 'Ждёт сети · загрузится, когда появится'
     bright = false
   } else if (file.status === 'waiting' || file.status === 'reading') {
     icon = <Spinner />

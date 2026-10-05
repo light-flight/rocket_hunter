@@ -344,7 +344,7 @@ test('an old log turns into the same moves on the phone and on the server, befor
   assert.deepEqual(stand(union(later, { moves: turned, undone: [] })), ['L0-0-S=0:?', 'L1-0-5=0:5', 'n=0:9'])
 })
 
-test('a move of an old log has no real time of entry, nor has the same move entered again by «Вернуть»', () => {
+test('a move of an old log has no real time of entry, nor has the same move entered again by «Повторить»', () => {
   const old = fromOldLog(Array.from({ length: 25_000 }, () => ({ lane: 0, kart: '5' })), 25_000)
 
   assert.ok(old.every(untimed))
