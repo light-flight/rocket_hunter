@@ -358,12 +358,3 @@ export function syncPits(onSignedOut: () => void): Promise<void> {
   })()
   return running
 }
-
-// The colour of a kart by its pace: purple the fastest, grey the middle, brown the slowest.
-// Mixed in OKLCH, so every step looks as far from the next one as any other.
-export function paceColour(pace: number): string {
-  const p = Math.min(1, Math.max(0, pace))
-  return p <= 0.5
-    ? `color-mix(in oklch, #9243da, #525258 ${(p * 200).toFixed(1)}%)`
-    : `color-mix(in oklch, #525258, #461f00 ${((p - 0.5) * 200).toFixed(1)}%)`
-}

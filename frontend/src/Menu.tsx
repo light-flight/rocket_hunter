@@ -1,6 +1,7 @@
 import { type KeyboardEvent, useId, useState } from 'react'
 import type { Auth, User } from './auth.ts'
 import { Invite } from './Invite.tsx'
+import { PaletteSettings } from './Palette.tsx'
 import { Sheet } from './Sheet.tsx'
 import { useAppCached } from './status.ts'
 import { chooseTheme, THEMES, useTheme } from './theme.ts'
@@ -8,7 +9,8 @@ import { chooseTheme, THEMES, useTheme } from './theme.ts'
 type MenuProps = { user: User; auth: Auth; onClose: () => void }
 
 // The manager's own things, in a sheet over the list of races: who is signed in, whether the
-// app is ready to work without a network, the look of the app, inviting another manager, signing out.
+// app is ready to work without a network, the look of the app, the colours of the karts,
+// inviting another manager, signing out.
 export function Menu({ user, auth, onClose }: MenuProps) {
   const cached = useAppCached()
   const [signOutFailed, setSignOutFailed] = useState(false)
@@ -33,6 +35,7 @@ export function Menu({ user, auth, onClose }: MenuProps) {
           </p>
         </div>
         <ThemePicker />
+        <PaletteSettings />
         <Invite onSessionExpired={auth.markExpired} />
         <button
           type="button"
