@@ -39,9 +39,9 @@ class Api::PitLogsControllerTest < ActionDispatch::IntegrationTest
     assert_not PitLog.exists?
   end
 
-  test "a race with nothing done in its pits has an empty log, and no corridors chosen" do
+  test "a race with nothing done in its pits has an empty log, no corridors chosen and no final" do
     empty = { "moves" => [], "undone" => [], "from" => { "moves" => 0, "undone" => 0 }, "total" => { "moves" => 0, "undone" => 0 },
-      "lanes" => nil, "lanes_at" => 0 }
+      "lanes" => nil, "lanes_at" => 0, "final" => nil, "final_at" => 0 }
 
     assert_equal empty, get_log
     assert_response :ok
@@ -54,7 +54,7 @@ class Api::PitLogsControllerTest < ActionDispatch::IntegrationTest
     assert_response :no_content
     assert_equal [ SPARES + [ stop("a") ], [ "s1" ] ], stored
     assert_equal({ "moves" => SPARES + [ stop("a") ], "undone" => [ "s1" ], "from" => { "moves" => 0, "undone" => 0 },
-      "total" => { "moves" => 3, "undone" => 1 }, "lanes" => nil, "lanes_at" => 0 }, get_log)
+      "total" => { "moves" => 3, "undone" => 1 }, "lanes" => nil, "lanes_at" => 0, "final" => nil, "final_at" => 0 }, get_log)
   end
 
   test "puts together what two phones send" do
@@ -115,7 +115,7 @@ class Api::PitLogsControllerTest < ActionDispatch::IntegrationTest
 
   test "a phone gets only what it has not read yet, and the corridors with every read" do
     PitLog.create!(race_id: RACE, moves: SPARES + [ stop("a"), stop("b", "5") ], undone: [ "s1", "a" ], lanes: 2, lanes_at: AT)
-    lanes = { "lanes" => 2, "lanes_at" => AT }
+    lanes = { "lanes" => 2, "lanes_at" => AT, "final" => nil, "final_at" => 0 }
 
     assert_equal({ "moves" => [ stop("b", "5") ], "undone" => [ "a" ], "from" => { "moves" => 3, "undone" => 1 },
       "total" => { "moves" => 4, "undone" => 2 }, **lanes }, get_log(moves: 3, moves_last: "a", undone: 1, undone_last: "s1"))
@@ -286,6 +286,61 @@ class Api::PitLogsControllerTest < ActionDispatch::IntegrationTest
         put_log(moves: [ stop("a") ], **lanes)
 
         assert_response :unprocessable_content, lanes.inspect
+      end
+    end
+  end
+
+  FINAL = { "pilots" => 12, "stops" => 1, "minutes" => 25, "closes" => 5, "lights" => true, "change" => 40, "start" => nil }.freeze
+
+  test "takes the final a phone set up, with the moves or alone, and gives it back with every read" do
+    put_log(final: FINAL, final_at: AT)
+
+    assert_response :no_content
+    assert_equal [ FINAL, AT ], [ PitLog.sole.final, PitLog.sole.final_at ]
+    assert_equal [ FINAL, AT ], get_log.values_at("final", "final_at")
+
+    started = FINAL.merge("start" => AT + 60_000)
+    put_log(moves: [ stop("a") ], final: started, final_at: AT + 60_000)
+    assert_response :no_content
+    assert_equal [ [ stop("a") ], started ], [ PitLog.sole.moves, PitLog.sole.final ]
+    assert_equal [ started, AT + 60_000 ], get_log(moves: 1, moves_last: "a").values_at("final", "final_at")
+
+    # A send without it leaves it as it is.
+    put_log(moves: [ stop("b", "5") ])
+    assert_equal [ started, AT + 60_000 ], get_log.values_at("final", "final_at")
+  end
+
+  test "of two phones' changes of the final the later one stands, whichever comes first" do
+    put_log(final: FINAL.merge("start" => AT), final_at: AT + 10)
+    # Changed earlier on a phone that had no network, or at the same moment.
+    put_log(final: FINAL, final_at: AT + 5)
+    put_log(final: FINAL.merge("pilots" => 8), final_at: AT + 10)
+
+    assert_response :no_content
+    assert_equal [ FINAL.merge("start" => AT), AT + 10 ], get_log.values_at("final", "final_at")
+
+    # The start taken back.
+    put_log(final: FINAL, final_at: AT + 11)
+    assert_equal [ FINAL, AT + 11 ], get_log.values_at("final", "final_at")
+  end
+
+  test "refuses a final that makes no sense, and keeps nothing of the send" do
+    PitLog.create!(race_id: RACE, final: FINAL, final_at: AT)
+
+    assert_no_changes -> { PitLog.sole.attributes } do
+      [
+        { final: FINAL }, { final_at: AT + 1 }, { final: FINAL, final_at: nil }, { final: FINAL, final_at: "now" },
+        { final: FINAL, final_at: 1.5 }, { final: FINAL, final_at: -1 }, { final: FINAL, final_at: PitLog::LAST_AT + 1 },
+        { final: FINAL.merge("pilots" => 0), final_at: AT + 1 }, { final: FINAL.merge("closes" => 25), final_at: AT + 1 },
+        { final: FINAL.merge("lights" => "yes"), final_at: AT + 1 }, { final: FINAL.except("start"), final_at: AT + 1 },
+        { final: FINAL.merge("by" => "me"), final_at: AT + 1 }, { final: "final", final_at: AT + 1 },
+        { final: [ 12 ], final_at: AT + 1 }, { final: nil, final_at: AT + 1 },
+        # Out of range, though older than the final here.
+        { final: FINAL.merge("stops" => 10), final_at: 1 }
+      ].each do |final|
+        put_log(moves: [ stop("a") ], **final)
+
+        assert_response :unprocessable_content, final.inspect
       end
     end
   end

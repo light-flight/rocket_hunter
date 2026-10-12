@@ -206,6 +206,68 @@ class PitLogTest < ActiveSupport::TestCase
     assert_equal [ 2, 0 ], [ pits.lanes, pits.lanes_at ]
   end
 
+  FINAL = { "pilots" => 12, "stops" => 1, "minutes" => 25, "closes" => 5, "lights" => true, "change" => 40, "start" => nil }.freeze
+
+  test "has no final until a phone sets one up" do
+    pits = log([])
+
+    assert_equal [ nil, 0 ], [ pits.final, pits.final_at ]
+    assert pits.valid?
+  end
+
+  test "keeps a final before its start and after it, and when it was changed" do
+    [ FINAL, FINAL.merge("start" => 1_791_028_800_000), FINAL.merge("lights" => false, "stops" => 0, "closes" => 0),
+      FINAL.merge("pilots" => 99, "stops" => 9, "minutes" => 1440, "closes" => 1439, "change" => 600, "start" => PitLog::LAST_AT),
+      FINAL.merge("pilots" => 1, "minutes" => 1, "closes" => 0, "change" => 1, "start" => 0) ].each do |final|
+      assert @race.build_pit_log(final: final, final_at: 1_791_028_800_000).valid?, final.inspect
+    end
+  end
+
+  test "refuses a final no phone would send" do
+    [
+      FINAL.merge("pilots" => 0), FINAL.merge("pilots" => 100), FINAL.merge("pilots" => nil), FINAL.merge("pilots" => "12"),
+      FINAL.merge("stops" => -1), FINAL.merge("stops" => 10), FINAL.merge("stops" => 1.5),
+      FINAL.merge("minutes" => 0), FINAL.merge("minutes" => 1441), FINAL.merge("minutes" => "25"),
+      FINAL.merge("closes" => -1), FINAL.merge("closes" => 25), FINAL.merge("closes" => 30), FINAL.merge("closes" => nil),
+      FINAL.merge("lights" => "yes"), FINAL.merge("lights" => 1), FINAL.merge("lights" => nil),
+      FINAL.merge("change" => 0), FINAL.merge("change" => 601), FINAL.merge("change" => 40.5),
+      FINAL.merge("start" => -1), FINAL.merge("start" => PitLog::LAST_AT + 1), FINAL.merge("start" => "now"),
+      FINAL.except("start"), FINAL.merge("by" => "me"), "final", [ 12, 1 ], 7
+    ].each do |final|
+      assert_not @race.build_pit_log(final: final).valid?, final.inspect
+    end
+    [ -1, 1.5, nil, "сейчас", PitLog::LAST_AT + 1 ].each do |at|
+      assert_not @race.build_pit_log(final: FINAL, final_at: at).valid?, at.inspect
+    end
+  end
+
+  test "of two changes of the final the later one stands, whichever comes first, before the start and after it" do
+    pits = log([])
+    pits.take_final(FINAL, 100)
+    assert_equal [ FINAL, 100 ], [ pits.final, pits.final_at ]
+
+    started = FINAL.merge("start" => 150)
+    pits.take_final(started, 150)
+    # Changed earlier on another phone that had no network, or at the same moment.
+    pits.take_final(FINAL.merge("pilots" => 10), 120)
+    pits.take_final(FINAL.merge("pilots" => 8), 150)
+    assert_equal [ started, 150 ], [ pits.final, pits.final_at ]
+
+    pits.take_final(started.merge("pilots" => 11), 200)
+    assert_equal [ started.merge("pilots" => 11), 200 ], [ pits.final, pits.final_at ]
+    assert pits.valid?
+  end
+
+  test "a final that is not one is taken whatever its time, so the log is refused" do
+    [ [ FINAL.merge("pilots" => 0), 50 ], [ "final", 200 ], [ FINAL, -1 ], [ FINAL, PitLog::LAST_AT + 1 ] ].each do |final, at|
+      pits = log([])
+      pits.final, pits.final_at = FINAL, 100
+      pits.take_final(final, at)
+
+      assert_not pits.valid?, [ final, at ].inspect
+    end
+  end
+
   test "a choice of the corridors that is not one is taken whatever its time, so the log is refused" do
     [ [ 4, 50 ], [ 0, 200 ], [ 2, -1 ], [ nil, -1 ], [ 2, PitLog::LAST_AT + 1 ] ].each do |lanes, at|
       pits = log([])

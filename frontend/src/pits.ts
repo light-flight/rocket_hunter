@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { api } from './api.ts'
 import { db, emptyPitLog, type PitLog } from './db.ts'
+import { type Final, isFinal } from './final.ts'
 import { newId } from './id.ts'
 import { CORRIDORS, type PitMove, isOld, lastMove, nextTime, replaces, standing, union } from './pitlane.ts'
 import { watchedRaces } from './watch.ts'
@@ -16,8 +17,9 @@ export type { PitMove }
 // twice, late or out of order is still one move, and a move undone on any phone stays undone.
 // The corridors of the pit lane are chosen here too, before the first stop, and stay until the pits
 // start over: of two phones' choices the later one wins, but never over corridors something stands
-// in. What is done here goes to the server when there is a network, and the phone reads from the
-// server only what it has not read yet.
+// in. The final going on is kept with them, and of two phones' changes of it the later wins. What is
+// done here goes to the server when there is a network, and the phone reads from the server only what
+// it has not read yet.
 
 // The pit log of a race. undefined until the database has answered, null if it cannot be read.
 export function usePitLog(raceId: string): PitLog | null | undefined {
@@ -32,7 +34,7 @@ export function usePitLog(raceId: string): PitLog | null | undefined {
 }
 
 function waiting(unsent: PitLog['unsent']): 0 | 1 {
-  return unsent.moves.length + unsent.undone.length > 0 || unsent.lanes ? 1 : 0
+  return unsent.moves.length + unsent.undone.length > 0 || unsent.lanes || unsent.final ? 1 : 0
 }
 
 // The ids of a list and more, each once.
@@ -120,7 +122,7 @@ export async function resetPits(raceId: string): Promise<void> {
       redo: [],
       lanes: null,
       lanesAt: later(log),
-      unsent: { moves: log.unsent.moves, undone: adding(log.unsent.undone, ids), lanes: true },
+      unsent: { ...log.unsent, undone: adding(log.unsent.undone, ids), lanes: true },
       pending: 1,
     })
   })
@@ -130,6 +132,22 @@ export async function resetPits(raceId: string): Promise<void> {
 // the phone that made it runs ahead, so that this one still wins over it.
 function later(log: PitLog): number {
   return Math.max(Date.now(), log.lanesAt + 1)
+}
+
+// The final set up, started, its start taken back, or changed while it goes: it takes the place of the
+// one here, and of the one on every phone, unless another phone changed it later still.
+export async function saveFinal(raceId: string, final: Final): Promise<void> {
+  if (!isFinal(final)) return
+  await db.transaction('rw', db.pits, async () => {
+    const log = (await db.pits.get(raceId)) ?? emptyPitLog(raceId)
+    await db.pits.put({
+      ...log,
+      final,
+      finalAt: Math.max(Date.now(), log.finalAt + 1),
+      unsent: { ...log.unsent, final: true },
+      pending: 1,
+    })
+  })
 }
 
 // The same rules as the server's (app/models/pit_log.rb).
@@ -170,16 +188,27 @@ function isLists(value: unknown): value is Lists {
 
 // What the server has of the pits of a race that this phone had not read: the rest of each of its
 // two lists, from where the phone had read it to, or from the start when that is not what the
-// server has; how long the lists are there; and its corridors, with when they were chosen.
-type Unread = { moves: PitMove[]; undone: string[]; from: Lists; total: Lists; lanes: number | null; lanesAt: number }
+// server has; how long the lists are there; its corridors, with when they were chosen; and its final,
+// with when it was changed.
+type Unread = {
+  moves: PitMove[]
+  undone: string[]
+  from: Lists
+  total: Lists
+  lanes: number | null
+  lanesAt: number
+  final: Final | null
+  finalAt: number
+}
 
 // The answer to a read, or null if it is not one.
 async function unread(response: Response): Promise<Unread | null> {
   const body: unknown = await response.json().catch(() => null)
   if (typeof body !== 'object' || body === null) return null
-  const { moves, undone, from, total, lanes, lanes_at: lanesAt } = body as Record<string, unknown>
+  const { moves, undone, from, total, lanes, lanes_at: lanesAt, final, final_at: finalAt } = body as Record<string, unknown>
   if (!Array.isArray(moves) || !moves.every(isMove) || !Array.isArray(undone) || !undone.every(isId)) return null
   if (!isLists(from) || !isLists(total) || !(lanes === null || isLanes(lanes)) || !isWhole(lanesAt)) return null
+  if (!(final === null || isFinal(final)) || !isWhole(finalAt)) return null
   // Each list runs from where it starts to the end of the server's: anything else and what has
   // been read is not known.
   if (from.moves + moves.length !== total.moves || from.undone + undone.length !== total.undone) return null
@@ -190,6 +219,8 @@ async function unread(response: Response): Promise<Unread | null> {
     total: { moves: total.moves, undone: total.undone },
     lanes,
     lanesAt,
+    final: final && { ...final },
+    finalAt,
   }
 }
 
@@ -197,7 +228,7 @@ async function unread(response: Response): Promise<Unread | null> {
 async function take(raceId: string, there: Unread): Promise<void> {
   const here = (await db.pits.get(raceId)) ?? emptyPitLog(raceId)
   const { moves: all, undone } = union(here, there)
-  const unsent = { moves: [...here.unsent.moves], undone: [...here.unsent.undone], lanes: false }
+  const unsent = { moves: [...here.unsent.moves], undone: [...here.unsent.undone], lanes: false, final: false }
   let dropped = new Set<string>()
 
   // A list that came whole is all the server has: what is here and not there, it lost or never had,
@@ -232,6 +263,11 @@ async function take(raceId: string, there: Unread): Promise<void> {
   // undone here before is not to be entered again.
   const redo = lanes.lanes === here.lanes && lanes.lanesAt === here.lanesAt ? here.redo : []
 
+  // The final here goes there if it was changed later than the server's: changed here and not sent
+  // yet, or sent and lost there. Else the server's is taken.
+  unsent.final = here.finalAt > there.finalAt
+  const final = unsent.final ? here : there
+
   // Read to the end of a list only if it had been read to where this answer starts: another tab of
   // the app may have read further, or less, meanwhile. A move read again changes nothing. The last
   // one read is the last of the answer, or, when it brought nothing new, the one read before.
@@ -254,6 +290,8 @@ async function take(raceId: string, there: Unread): Promise<void> {
     lanes.lanes !== here.lanes ||
     lanes.lanesAt !== here.lanesAt ||
     unsent.lanes !== here.unsent.lanes ||
+    final.finalAt !== here.finalAt ||
+    unsent.final !== here.unsent.final ||
     redo.length !== here.redo.length ||
     moves.length !== here.moves.length ||
     undone.length !== here.undone.length ||
@@ -271,6 +309,8 @@ async function take(raceId: string, there: Unread): Promise<void> {
     redo,
     lanes: lanes.lanes,
     lanesAt: lanes.lanesAt,
+    final: final.final,
+    finalAt: final.finalAt,
     unsent,
     read,
     pending: waiting(unsent),
@@ -287,6 +327,8 @@ async function exchange(onSignedOut: () => void): Promise<void> {
         undone: log.unsent.undone,
         // The corridors only when they changed here: the server keeps the later of its own and these.
         ...(log.unsent.lanes && { lanes: log.lanes, lanes_at: log.lanesAt }),
+        // The final only when it changed here, the same way.
+        ...(log.unsent.final && log.final && { final: log.final, final_at: log.finalAt }),
       },
     })
     // No answer, and the rest would get none either. The server may have taken it even so: it goes
@@ -307,6 +349,7 @@ async function exchange(onSignedOut: () => void): Promise<void> {
         moves: now.unsent.moves.filter((id) => !sent.moves.has(id)),
         undone: now.unsent.undone.filter((id) => !sent.undone.has(id)),
         lanes: now.unsent.lanes && !(log.unsent.lanes && now.lanesAt === log.lanesAt),
+        final: now.unsent.final && !(log.unsent.final && now.finalAt === log.finalAt),
       }
       await db.pits.update(log.raceId, { unsent, pending: waiting(unsent) })
     })

@@ -834,6 +834,105 @@ test('a driver changes karts in the same corridor as often as they come in', asy
   await expect.poll(inCorridor).toEqual(['s1', 'q12'])
 })
 
+// The finals of a race run one after another on the same karts. The manager sets one up, presses
+// «Старт», and sees how long the pit lane stays open, how many of the stops every pilot must make are
+// made, and when the queue under the red lights is bound to come.
+test('a final counts down the window for the stops and warns before the queue under the red', async ({
+  page,
+  context,
+  request,
+}) => {
+  await asInstalled(context)
+  await page.goto('/')
+  await confirmInTelegram(page, request)
+
+  // The first race of the team, or one more.
+  const name = page.getByLabel('Название гонки')
+  const another = page.getByRole('button', { name: 'Новая гонка' })
+  await expect(name.or(another)).toBeVisible({ timeout: 10_000 })
+  if (await another.isVisible()) await another.click()
+  // From here on the minutes of the final go by at the test's word.
+  await page.clock.install()
+  await name.fill('Этап 8 · Финалы')
+  await page.getByRole('button', { name: 'Создать гонку' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Этап 8 · Финалы')
+  await page.getByRole('button', { name: 'Открыть пит-стопы' }).click()
+  await page.getByRole('button', { name: 'Готово' }).click()
+
+  const panel = page.getByTestId('final')
+  const sheet = page.getByRole('dialog', { name: 'Финал' })
+  const stops = panel.getByTestId('final-stops')
+  const advice = panel.getByTestId('final-advice')
+  const raceId = await page.evaluate(() => localStorage.getItem('rocket-hunter.race'))
+  const finalOnServer = async () => (await (await page.request.get(`/api/races/${raceId}/pit_log`)).json()).final
+
+  // Nothing set up yet: the sheet opens on the pilots, the rest as most finals go.
+  await panel.getByRole('button', { name: 'Настроить финал' }).click()
+  await expect(sheet.getByLabel('Пилотов')).toBeFocused()
+  await expect(sheet.getByLabel('Пилотов')).toHaveValue('')
+  await expect(sheet.getByLabel('Длится, мин')).toHaveValue('25')
+  await expect(sheet.getByLabel('Пит закрывается, мин до конца')).toHaveValue('5')
+  await expect(sheet.getByRole('radio', { name: 'Нет' })).toBeChecked()
+  await sheet.getByRole('button', { name: 'Сохранить' }).click()
+  await expect(sheet.getByRole('alert')).toHaveText('Пилотов — от 1 до 99')
+
+  await sheet.getByLabel('Пилотов').fill('3')
+  await sheet.getByRole('radio', { name: 'Есть' }).click()
+  await expect(sheet.getByLabel('Смена, с')).toHaveValue('40')
+  await sheet.getByRole('button', { name: 'Сохранить' }).click()
+  await expect(sheet).toBeHidden()
+  await expect(panel).toContainText('3 пилота · 25 мин · пит закрывается за 5 мин · 1 смена · светофор 40 с')
+  await expect.poll(finalOnServer).toMatchObject({ pilots: 3, lights: true, change: 40, start: null })
+
+  // The start: 20 minutes of window, three stops of 40 seconds in the one corridor.
+  await panel.getByRole('button', { name: 'Старт' }).click()
+  await expect(panel.getByTestId('closes-in')).toHaveText(/^(20:00|19:5\d)$/)
+  await expect(stops).toHaveText(/0\/3/)
+  await expect(advice).toHaveText(/^Осталось 3 смены ≈ 2:00 · запас 18:\d\d$/)
+  await expect.poll(async () => (await finalOnServer()).start).toEqual(expect.any(Number))
+
+  // 7 comes in: one stop made, a check on its number, and the corridor red for 40 seconds.
+  await page.getByRole('button', { name: 'Другой номер' }).click()
+  const other = page.getByRole('dialog', { name: 'Другой номер' })
+  await other.getByLabel('Номер').fill('7')
+  await other.getByRole('button', { name: 'Коридор 1' }).click()
+  await expect(other).toBeHidden()
+  await expect(stops).toHaveText(/1\/3/)
+  await expect(page.getByRole('button', { name: 'Номер 7, смены сделаны' })).toBeVisible()
+  await expect(page.getByTestId('pit-kart-stops')).toHaveCount(1)
+
+  // A minute and a half before the pit lane closes, the two stops left still fit, but only just.
+  await page.clock.fastForward('18:30')
+  await expect(advice).toHaveText(/^Пора менять · запас 0:[45]\d$/)
+  // A minute later they do not: the last one is bound to wait.
+  await page.clock.fastForward('01:00')
+  await expect(advice).toHaveText(/^Без очереди не успеть · последнему стоять ≥ 0:[01]\d$/)
+
+  // Then the pit lane closes, and the final ends.
+  await page.clock.fastForward('01:00')
+  await expect(panel).toContainText(/Пит закрыт · до финиша 4:\d\d/)
+  await page.clock.fastForward('05:00')
+  await expect(panel).toContainText('Финал окончен · смены 1/3')
+
+  // The next final has the pilots typed in again and the rest as the last one had it.
+  await panel.getByRole('button', { name: 'Следующий финал' }).click()
+  await expect(sheet.getByLabel('Пилотов')).toHaveValue('')
+  await expect(sheet.getByRole('radio', { name: 'Есть' })).toBeChecked()
+  await sheet.getByLabel('Пилотов').fill('5')
+  await sheet.getByRole('button', { name: 'Сохранить' }).click()
+  await expect(panel).toContainText('5 пилотов')
+  await expect(page.getByRole('button', { name: 'Номер 7', exact: true })).toBeVisible()
+
+  // A start pressed by mistake is taken back from the ⋯ menu, after a question.
+  await panel.getByRole('button', { name: 'Старт' }).click()
+  await expect(stops).toHaveText(/0\/5/)
+  await page.getByRole('button', { name: 'Ещё' }).click()
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('menuitem', { name: 'Отменить старт' }).click()
+  await expect(panel.getByRole('button', { name: 'Старт' })).toBeVisible()
+  await expect.poll(finalOnServer).toMatchObject({ pilots: 5, start: null })
+})
+
 test('a database that cannot be opened leaves a way out, not a blank screen', async ({ page, context }) => {
   await asInstalled(context)
   await context.addInitScript(() => {

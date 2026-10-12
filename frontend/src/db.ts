@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import type { Final } from './final.ts'
 import { type PitMove, fromOldLog } from './pitlane.ts'
 
 // What the phone keeps. Writes are flushed to disk before they count as done: a record must
@@ -68,9 +69,13 @@ export type PitLog = {
   // 0 for the corridors a race had before they were chosen in the pits.
   lanes: number | null
   lanesAt: number
+  // The final going on (final.ts), null until one is set up. finalAt is when it was last set up,
+  // started or changed, by the clock of the phone that did it: of two changes the later wins.
+  final: Final | null
+  finalAt: number
   // What was done here that the server has not confirmed yet: the ids of the moves and of the moves
-  // undone, and whether the corridors have yet to go.
-  unsent: { moves: string[]; undone: string[]; lanes: boolean }
+  // undone, and whether the corridors and the final have yet to go.
+  unsent: { moves: string[]; undone: string[]; lanes: boolean; final: boolean }
   // How much of the server's two lists this phone has read, and the id of the last one of each it
   // read: it asks for the rest only, and the server can tell it is still the list this phone read.
   read: { moves: number; undone: number; lastMove: string | null; lastUndone: string | null }
@@ -87,7 +92,9 @@ export function emptyPitLog(raceId: string): PitLog {
     redo: [],
     lanes: null,
     lanesAt: 0,
-    unsent: { moves: [], undone: [], lanes: false },
+    final: null,
+    finalAt: 0,
+    unsent: { moves: [], undone: [], lanes: false, final: false },
     read: { moves: 0, undone: 0, lastMove: null, lastUndone: null },
     pending: 0,
   }
@@ -169,7 +176,7 @@ db.version(6)
       // The moves undone after them, which could still be done again.
       const undone = fromOldLog(old.moves, old.moves.length).slice(old.count)
       const waiting = (list: PitMove[]) => (old.pending ? list.map((move) => move.id) : [])
-      const unsent = { moves: waiting(moves), undone: waiting(undone), lanes: false }
+      const unsent = { moves: waiting(moves), undone: waiting(undone), lanes: false, final: false }
       ref.value = {
         ...emptyPitLog(old.raceId),
         moves,
@@ -197,3 +204,22 @@ db.version(6)
       delete race.lanes
     })
   })
+// Pits kept before they had finals have none.
+db.version(7)
+  .stores({
+    races: 'id, createdAt, pending',
+    files: 'id, raceId, pending',
+    uploads: 'id',
+    rankings: 'raceId',
+    pits: 'raceId, pending',
+  })
+  .upgrade((tx) =>
+    tx
+      .table('pits')
+      .toCollection()
+      .modify((log: { final?: Final | null; finalAt?: number; unsent: { final?: boolean } }) => {
+        log.final ??= null
+        log.finalAt ??= 0
+        log.unsent.final ??= false
+      }),
+  )

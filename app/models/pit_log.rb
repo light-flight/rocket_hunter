@@ -7,7 +7,9 @@
 # and the log here takes in what it does not have yet. So a move sent twice is kept once, and one
 # undone stays undone whatever another phone sends after. Which moves stand, and in what order, the
 # phones work out (frontend/src/pitlane.ts). The log also keeps how many corridors the pit lane has,
-# chosen on a phone the first time the pits are opened.
+# chosen on a phone the first time the pits are opened, and the final going on: the finals of a race
+# run one after another on the same karts, and the phones tell from it how much of the window for the
+# stops is left (frontend/src/final.ts).
 class PitLog < ApplicationRecord
   # A day-long race of 60 teams that each stop every 15 minutes is 5760 stops. Each stays here as many
   # times as phones entered it, and an undo done again adds a move, so there is room for two of each
@@ -22,13 +24,19 @@ class PitLog < ApplicationRecord
   CORRIDORS = LANES.map { it - 1 }
   # A phone's numbers are floating point: a time past this would not come back as it went.
   LAST_AT = 2**53 - 1
+  # A final: how many pilots race in it, the stops each of them must make, how many minutes it goes,
+  # how many minutes before its end the pit lane closes, whether the corridors have lights, how many
+  # seconds a change takes under them, and when it started by the clock of the phone that started it
+  # (none before the start).
+  FINAL = %w[ change closes lights minutes pilots start stops ].freeze
 
   belongs_to :race
 
-  validate :moves_make_sense, :undone_make_sense
+  validate :moves_make_sense, :undone_make_sense, :final_makes_sense
   # No corridors: not chosen yet, or to be chosen again after the pits were started over.
   validates :lanes, numericality: { only_integer: true, in: LANES }, allow_nil: true
   validates :lanes_at, numericality: { only_integer: true, in: 0..LAST_AT }
+  validates :final_at, numericality: { only_integer: true, in: 0..LAST_AT }
 
   # Takes in what a phone sends: the moves whose ids are not here yet, the first copy of each, and the
   # undone ids not here yet. Anything that is not a move is taken too, so that the log is refused.
@@ -52,7 +60,31 @@ class PitLog < ApplicationRecord
     self.lanes, self.lanes_at = lanes, at
   end
 
+  # Takes the final a phone set up, started or changed, with the time it did so by its clock, when that
+  # is later than the change here: of two phones' changes the later one stands, at any time of the
+  # final. A final that is not one is taken whatever its time, so that the log is refused.
+  def take_final(final, at)
+    return if (final.nil? || final?(final)) && at.is_a?(Integer) && at.between?(0, LAST_AT) && at <= final_at
+
+    self.final, self.final_at = final, at
+  end
+
   private
+    def final_makes_sense
+      errors.add(:final, :invalid) unless final.nil? || final?(final)
+    end
+
+    def final?(final)
+      final.is_a?(Hash) && final.keys.sort == FINAL && whole?(final["pilots"], 1..99) && whole?(final["stops"], 0..9) &&
+        whole?(final["minutes"], 1..1440) && whole?(final["closes"], 0...final["minutes"]) &&
+        [ true, false ].include?(final["lights"]) && whole?(final["change"], 1..600) &&
+        (final["start"].nil? || whole?(final["start"], 0..LAST_AT))
+    end
+
+    def whole?(value, range)
+      value.is_a?(Integer) && range.include?(value)
+    end
+
     def choice?(lanes, at)
       (lanes.nil? || (lanes.is_a?(Integer) && LANES.include?(lanes))) && at.is_a?(Integer) && at.between?(0, LAST_AT)
     end

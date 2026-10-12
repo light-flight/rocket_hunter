@@ -1,5 +1,7 @@
 import { type PointerEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { Kart, PitLog, Race } from './db.ts'
+import { FinalPanel } from './Final.tsx'
+import { stopsIn } from './final.ts'
 import { LanesPicker } from './Lanes.tsx'
 import {
   kartOf,
@@ -14,10 +16,23 @@ import {
   untimed,
 } from './pitlane.ts'
 import { BARE_EDGE, KNOWN_EDGE, paceColour, paceIsLight, usePalette, type Palette } from './palette.ts'
-import { chooseLanes, recordMove, redoMove, resetPits, syncPits, undoMove, usePitLog } from './pits.ts'
+import { chooseLanes, recordMove, redoMove, resetPits, saveFinal, syncPits, undoMove, usePitLog } from './pits.ts'
 import { syncFiles } from './qualification.ts'
 import { Sheet, type SheetHandle } from './Sheet.tsx'
-import { ActionArea, ArrowRight, ArrowUp, History, MainAction, More, Plus, Redo, SHEET, TextField, Undo } from './ui.tsx'
+import {
+  ActionArea,
+  ArrowRight,
+  ArrowUp,
+  Check,
+  History,
+  MainAction,
+  More,
+  Plus,
+  Redo,
+  SHEET,
+  TextField,
+  Undo,
+} from './ui.tsx'
 
 // The pit screen. A team's number is always on the track: a team that comes in joins the end of
 // a corridor, its driver gets into the kart at the front, and the number is moved onto it. So the
@@ -27,7 +42,9 @@ import { ActionArea, ArrowRight, ArrowUp, History, MainAction, More, Plus, Redo,
 // the middle, brown the slowest. A kart nobody knows the pace of has no colour, only a bold
 // dashed edge. The first time the pits are opened they ask how many
 // corridors the pit lane has, and the corridors stay so until the pits are started over from the
-// ⋯ menu. The journal tells which team came into which corridor, and when.
+// ⋯ menu. The journal tells which team came into which corridor, and when. Above the corridors is the
+// final going on: when the pit lane closes and whether the stops left still fit in before it
+// (Final.tsx); a team that made the stops it must in the final has a check on its number.
 
 type PitsProps = { race: Race; karts: Kart[]; onQualification: () => void; onSignedOut: () => void }
 
@@ -187,6 +204,10 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
   const pitlane = replay(moves)
   const pace = new Map(karts.map((kart) => [kart.kart, kart.pace]))
   const all = teams(karts.map((kart) => kart.kart), moves)
+  const final = log.final
+  const started = final !== null && final.start !== null
+  // The stops each team made in the final, once it started.
+  const made = final !== null && started ? stopsIn(final, moves) : null
   // The pace of the kart a team is on the track with.
   const riding = (team: string) => paceOf(kartOf(pitlane.riding, team), pace)
   // Every team in sight at once, and the key for another number after them: more tiles, more
@@ -265,6 +286,13 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
     await change(() => resetPits(raceId))
   }
 
+  // A start pressed by mistake: the final waits for its start again, on every phone.
+  async function unstart() {
+    setMore(false)
+    if (!final || !window.confirm('Отменить старт финала? Отсчёт остановится на всех телефонах.')) return
+    await change(() => saveFinal(raceId, { ...final, start: null }))
+  }
+
   return (
     <div className="flex flex-1 flex-col select-none [-webkit-touch-callout:none]">
       <div className="relative mt-2 grid h-7 grid-cols-[1fr_auto_1fr] items-center">
@@ -287,10 +315,21 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
           <>
             <div className="fixed inset-0 z-40 bg-dim" onClick={() => setMore(false)} />
             <div role="menu" aria-label="Пит-стопы" className={`absolute top-full right-0 z-50 mt-1 w-65 overflow-hidden ${SHEET}`}>
+              {started && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  autoFocus
+                  onClick={unstart}
+                  className="flex h-14 w-full items-center border-b border-control px-4 text-left text-name active:opacity-70"
+                >
+                  Отменить старт
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"
-                autoFocus
+                autoFocus={!started}
                 onClick={startOver}
                 className="flex h-14 w-full items-center px-4 text-left text-name active:opacity-70"
               >
@@ -300,6 +339,13 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
           </>
         )}
       </div>
+
+      <FinalPanel
+        final={final}
+        moves={moves}
+        lanes={corridors}
+        onSave={(saved) => change(() => saveFinal(raceId, saved))}
+      />
 
       <div
         className={`mt-1 grid min-h-50 flex-1 basis-0 gap-6 ${corridors === 1 ? 'w-45 self-center' : ''}`}
@@ -373,23 +419,37 @@ function PitLane({ raceId, log, moves, corridors, karts, onQualification, change
         {all.map((team) => {
           const known = riding(team)
           const colour = fill(known, palette)
+          const stops = made?.get(team) ?? 0
+          const done = final !== null && final.stops > 0 && stops >= final.stops
+          // Of two stops and more, the ones begun show how many are made.
+          const begun = final !== null && stops > 0 && !done
           return (
             <button
               key={team}
               type="button"
               data-testid="pit-kart"
               data-pace={known ?? 'unknown'}
-              aria-label={`Номер ${team}`}
+              data-stops={made ? stops : undefined}
+              aria-label={`Номер ${team}${done ? ', смены сделаны' : begun ? `, смен ${stops} из ${final.stops}` : ''}`}
               onPointerDown={(event) => startDrag(event, team)}
               onPointerMove={moveDrag}
               onPointerUp={endDrag}
               onPointerCancel={() => setDrag(null)}
-              className={`flex touch-none items-center justify-center rounded-lg font-extrabold tabular-nums ${tile} ${
+              className={`relative flex touch-none items-center justify-center rounded-lg font-extrabold tabular-nums ${tile} ${
                 colour === undefined ? UNKNOWN : `${KNOWN} ${ink(known, palette)}`
               } ${drag?.team === team ? 'opacity-25' : ''}`}
               style={{ background: colour }}
             >
               {team}
+              {(done || begun) && (
+                <span
+                  aria-hidden="true"
+                  data-testid="pit-kart-stops"
+                  className="absolute top-0.5 right-1 text-[0.625rem] leading-4 font-bold opacity-85"
+                >
+                  {done ? <Check /> : `${stops}/${final.stops}`}
+                </span>
+              )}
             </button>
           )
         })}
