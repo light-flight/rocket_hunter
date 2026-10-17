@@ -35,7 +35,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # The id of the build is the last commit that touched frontend/ (config/deploy.yml).
           fetch-depth: 0
